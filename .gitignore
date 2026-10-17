@@ -1,0 +1,4 @@
+data/raw/
+.vibe-wise/
+.ipynb_checkpoints/
+__pycache__/
