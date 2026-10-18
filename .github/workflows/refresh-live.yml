@@ -1,0 +1,73 @@
+# Refresh the live 2026/27 season after every Premier League gameweek.
+#
+# Runs daily, but only rebuilds when the Fantasy Premier League feed marks a new gameweek
+# as final (finished and data checked), so most days it stops after one quick check.
+# When there is a new gameweek it rebuilds the live rows, retrains, re-exports the site
+# data and commits the result to main.
+name: refresh live season
+
+on:
+  schedule:
+    - cron: "0 7 * * *"  # daily, 07:00 UTC
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Rebuild even if there's no new gameweek"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh-live
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: pip install pandas numpy scikit-learn certifi
+
+      - name: Check for a new final gameweek
+        id: check
+        run: python scripts/update_live.py --check
+
+      - name: Restore Transfermarkt data (frozen at the end of 2025/26)
+        if: steps.check.outputs.changed == 'true' || inputs.force
+        uses: actions/cache@v4
+        with:
+          path: data/raw
+          key: transfermarkt-raw-2026-06
+
+      - name: Rebuild
+        if: steps.check.outputs.changed == 'true' || inputs.force
+        run: |
+          python scripts/download_data.py
+          python scripts/build_training_table.py
+          python scripts/update_live.py --force
+          python scripts/train_model.py
+          python scripts/evaluate_groups.py
+          python scripts/export_site_data.py
+
+      - name: Commit refreshed data
+        if: steps.check.outputs.changed == 'true' || inputs.force
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/live data/processed site/data
+          if git diff --cached --quiet; then
+            echo "nothing changed"
+          else
+            gameweek=$(python -c "import json; print(json.load(open('data/live/state.json'))['gameweek'])")
+            git commit -m "Refresh live season after gameweek ${gameweek}"
+            git push
+          fi

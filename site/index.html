@@ -21,6 +21,9 @@
     </div>
     <div class="right">
       <span class="count" id="count"></span>
+      <button class="icon about-toggle" id="about-toggle" aria-label="about this site">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2"/><path d="M8 7.2v4"/><circle class="dot" cx="8" cy="4.9" r="0.55"/></svg>
+      </button>
       <button class="icon" id="theme-toggle" aria-label="toggle dark mode">◐</button>
     </div>
   </header>
@@ -37,6 +40,8 @@
       <span class="label">sort</span>
       <button data-sort="value" class="on">value</button>
       <button data-sort="score">score</button>
+      <button data-sort="risers">risers</button>
+      <button data-sort="fallers">fallers</button>
     </div>
   </div>
 
@@ -48,7 +53,11 @@
 
   <div class="scrim" id="scrim" hidden></div>
   <aside class="panel" id="panel" aria-hidden="true">
-    <button class="icon close" id="panel-close" aria-label="close">×</button>
+    <div class="panel-nav">
+      <button class="step" id="panel-prev" aria-label="previous player">←</button>
+      <button class="step" id="panel-next" aria-label="next player">→</button>
+      <button class="icon close" id="panel-close" aria-label="close">×</button>
+    </div>
     <div id="panel-body"></div>
   </aside>
 

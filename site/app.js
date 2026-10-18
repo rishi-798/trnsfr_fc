@@ -1,7 +1,7 @@
 // transfer fc: browse premier league player-seasons from data/players.json
 // (built by scripts/export_site_data.py)
 
-const state = { data: null, season: null, group: "all", sort: "value", query: "" };
+const state = { data: null, season: null, group: "all", sort: "value", query: "", list: [], current: null };
 
 // lowercase and strip accents so "odegaard" finds "ødegaard" and "nunez" finds "núñez"
 const fold = (s) => (s ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
@@ -46,15 +46,35 @@ function toggleTheme() {
 // tiles show the prediction; 22/23 has none (no earlier season to train on), so the
 // actual value, which is the season-start value
 const shownValue = (p) => p.predicted ?? p.values[2];
+// forecast change from the season-start value (null without a prediction)
+const change = (p) => (p.predicted != null && p.values[2] ? p.predicted / p.values[2] - 1 : null);
+const FLAT = 0.03;  // changes smaller than this read as flat
+const trend = (c) => (c == null ? "" : c > FLAT ? "up" : c < -FLAT ? "down" : "flat");
+const arrow = (c) => (c > FLAT ? "↑" : c < -FLAT ? "↓" : "→");
+const euroChange = (p) => (change(p) == null ? null : p.predicted - p.values[2]);
+// risers/fallers show the euro move too, since that's what they're sorted by
+const changeLabel = (p) => {
+  const c = change(p);
+  if (c == null) return "";
+  const pct = `${Math.abs(Math.round(c * 100))}%`;
+  return state.sort === "risers" || state.sort === "fallers"
+    ? `${arrow(c)} ${money(Math.abs(euroChange(p)))} · ${pct}` : `${arrow(c)} ${pct}`;
+};
 
 function visiblePlayers() {
   let rows = state.data.players.filter((p) => p.season === state.season);
   if (state.group !== "all") rows = rows.filter((p) => p.group === state.group);
   if (state.query) rows = rows.filter((p) => fold(`${p.name} ${p.club}`).includes(state.query));
-  const key = state.sort === "value"
-    ? (p) => shownValue(p) ?? -1
+  const keys = {
+    value: (p) => shownValue(p) ?? -1,
     // "all" compares positions by percentile; within one position the raw score works
-    : (p) => (state.group === "all" ? p.score_pct : p.score) ?? -1;
+    score: (p) => (state.group === "all" ? p.score_pct : p.score) ?? -1,
+    // by euro change, so a €500k youngster's +600% doesn't top the list; players
+    // without a forecast sink to the bottom of both
+    risers: (p) => euroChange(p) ?? -Infinity,
+    fallers: (p) => (euroChange(p) == null ? -Infinity : -euroChange(p)),
+  };
+  const key = keys[state.sort];
   return rows.sort((a, b) => key(b) - key(a));
 }
 
@@ -63,16 +83,20 @@ function renderGrid() {
   const gw = state.data.live && state.season === state.data.live.season ? ` · after gw ${state.data.live.gameweek}` : "";
   $("count").textContent = `${rows.length} ${rows.length === 1 ? "player" : "players"}${gw}`;
   $("grid").innerHTML = rows.length || !state.query ? "" : `<p class="empty">no players found</p>`;
+  state.list = rows;  // panel arrows step through what's on screen
   rows.forEach((p, i) => {
     const tile = document.createElement("button");
     tile.className = "tile";
+    const c = change(p);
+    if (c != null) tile.dataset.trend = trend(c);
     tile.style.animationDelay = `${Math.min(i, 24) * 18}ms`;
     tile.innerHTML = `
       <span class="rank">${String(i + 1).padStart(2, "0")}</span>
       <span class="art"><span class="initials">${p.initials}</span></span>
       <span class="value ${p.predicted == null ? "actual" : ""}">${state.sort === "score" ? rankLabel(p) : money(shownValue(p))}</span>
       <span class="name">${p.name}</span>
-      <span class="club">${p.club ?? ""}</span>`;
+      <span class="club">${p.club ?? ""}</span>
+      ${c != null && state.sort !== "score" ? `<span class="change ${trend(c)}">${changeLabel(p)}</span>` : ""}`;
     tile.addEventListener("click", () => openPanel(p));
     $("grid").appendChild(tile);
   });
@@ -199,9 +223,9 @@ function openPanel(p) {
     <h2>${p.name}</h2>
     <section class="vs">
       <div><div class="label">predicted${p.explanation ? ` <button class="why" id="why" aria-expanded="false">why ↓</button>` : ""}</div>
-        <div class="big ${p.predicted == null ? "pending" : ""}">${money(p.predicted)}</div>
+        <div class="big ${p.predicted == null ? "pending" : ""}" ${p.predicted != null ? `data-value="${p.predicted}"` : ""}>${money(p.predicted)}</div>
         <div class="note">${predictionNote(p)}</div></div>
-      <div><div class="label">actual</div><div class="big">${money(p.values[2])}</div>
+      <div><div class="label">actual</div><div class="big" ${p.values[2] != null ? `data-value="${p.values[2]}"` : ""}>${money(p.values[2])}</div>
         <div class="note">${actualNote(p)}</div>${stale}</div>
     </section>
     ${p.explanation ? `<p class="explain" id="explain" hidden>${p.explanation}</p>` : ""}
@@ -229,10 +253,81 @@ function openPanel(p) {
     value.addEventListener("click", toggle);
     value.classList.add("clickable");
   }
+  $("panel-body").querySelectorAll(".vs .big[data-value]").forEach(countUp);
+  state.current = p;
+  updateSteps();
+  showPanel();
+}
+
+function showPanel() {
+  const wasOpen = $("panel").classList.contains("open");
   $("panel").classList.add("open");
   $("panel").setAttribute("aria-hidden", "false");
   $("scrim").hidden = false;
-  $("panel-close").focus();
+  if (!wasOpen) $("panel-close").focus();
+  $("panel").scrollTop = 0;
+}
+
+// previous/next player in the grid's current order (also ← → keys)
+function updateSteps() {
+  const i = state.current ? state.list.indexOf(state.current) : -1;
+  $("panel-prev").disabled = i <= 0;
+  $("panel-next").disabled = i < 0 || i >= state.list.length - 1;
+}
+
+function step(dir) {
+  const i = state.list.indexOf(state.current);
+  if (i < 0) return;
+  const next = state.list[i + dir];
+  if (next) openPanel(next);
+}
+
+// money values count up from zero when the panel opens (skipped for reduced motion)
+const reduceMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+function countUp(el) {
+  const target = Number(el.dataset.value);
+  if (!target || reduceMotion()) return;
+  const start = performance.now(), duration = 520;
+  const frame = (now) => {
+    const t = Math.min((now - start) / duration, 1);
+    el.textContent = money(target * (1 - Math.pow(1 - t, 3)));  // ease-out
+    if (t < 1) requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
+}
+
+// --- about -------------------------------------------------------------
+function openAbout() {
+  const m = state.data.model, live = state.data.live;
+  const pct = (male) => Math.round((Math.exp(male) - 1) * 100);
+  const accuracy = m ? `on ${seasonLabel(m.test_season)}, a season it never saw, it was off by about ${pct(m.results.model.male)}% for a typical player,
+    against ${pct(m.results.baseline.male)}% for simply assuming nothing changes.` : "";
+  $("panel-body").innerHTML = `
+    <div class="sub">about</div>
+    <h2>transfer fc</h2>
+    <section class="about">
+      <p>where premier league players' market values are heading, from how they're playing. a model reads each player's
+        minutes, goals, assists, age, club form and value history, and forecasts their transfermarkt value at the end of the season.</p>
+      <h3>reading it</h3>
+      <p><span class="muted">predicted</span> — the forecast for the end of the season (30 june).<br>
+        <span class="muted">actual</span> — the value at the start of the season.<br>
+        <span class="muted">↑ ↓</span> — the forecast change between the two. the glow is warm for risers, cool for fallers.<br>
+        <span class="muted">why</span> — the factors that pushed the forecast up or down, straight from the model.</p>
+      ${live ? `<h3>this season</h3>
+      <p>${seasonLabel(live.season)} updates after every gameweek (now after gameweek ${live.gameweek}).
+        early on, the forecast mixes this season's pace with last season, so a hot or cold start doesn't dominate.
+        forecasts settle as more games are played.</p>` : ""}
+      <h3>how good is it</h3>
+      <p>${accuracy} it forecasts market values, not transfer fees, and it only knows the stats above —
+        not injuries, contracts or transfer rumours.</p>
+      <h3>data</h3>
+      <p>values and history: transfermarkt, via <a href="https://github.com/dcaribou/transfermarkt-datasets" target="_blank" rel="noopener">transfermarkt-datasets</a>
+        (paused at june 2026). this season's stats: the <a href="https://fantasy.premierleague.com" target="_blank" rel="noopener">fantasy premier league</a> feed.
+        not affiliated with either.</p>
+    </section>`;
+  state.current = null;
+  updateSteps();
+  showPanel();
 }
 
 function closePanel() {
@@ -266,10 +361,19 @@ async function main() {
   $("panel-close").addEventListener("click", closePanel);
   $("scrim").addEventListener("click", closePanel);
   document.addEventListener("keydown", (e) => {
+    const panelOpen = $("panel").getAttribute("aria-hidden") === "false";
+    if (panelOpen && state.current && (e.key === "ArrowLeft" || e.key === "ArrowRight") && e.target.tagName !== "INPUT") {
+      e.preventDefault();
+      step(e.key === "ArrowLeft" ? -1 : 1);
+      return;
+    }
     if (e.key !== "Escape") return;
-    if ($("panel").getAttribute("aria-hidden") === "false") closePanel();
+    if (panelOpen) closePanel();
     else if (!$("search").hidden) toggleSearch(false);
   });
+  $("panel-prev").addEventListener("click", () => step(-1));
+  $("panel-next").addEventListener("click", () => step(1));
+  $("about-toggle").addEventListener("click", openAbout);
   $("search-toggle").addEventListener("click", () => toggleSearch($("search").hidden));
   $("search-input").addEventListener("input", (e) => {
     state.query = fold(e.target.value.trim());

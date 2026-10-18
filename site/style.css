@@ -7,6 +7,11 @@
   --panel: rgba(253, 253, 252, 0.92);
   --aura: rgba(150, 150, 255, 0.22);
   --aura-2: rgba(255, 190, 150, 0.16);
+  /* glow tint by forecast direction: warm = rising, cool = falling */
+  --rise: rgba(255, 150, 80, 0.30);
+  --rise-2: rgba(255, 205, 120, 0.20);
+  --fall: rgba(90, 130, 255, 0.28);
+  --fall-2: rgba(150, 190, 255, 0.18);
   color-scheme: light;
 }
 
@@ -19,6 +24,10 @@
   --panel: rgba(11, 11, 12, 0.9);
   --aura: rgba(120, 120, 255, 0.20);
   --aura-2: rgba(255, 140, 90, 0.12);
+  --rise: rgba(255, 140, 70, 0.26);
+  --rise-2: rgba(255, 200, 110, 0.14);
+  --fall: rgba(90, 120, 255, 0.28);
+  --fall-2: rgba(140, 180, 255, 0.14);
   color-scheme: dark;
 }
 
@@ -152,6 +161,14 @@ button {
   transition: opacity 0.5s, transform 0.6s;
 }
 .tile:hover .art::before, .tile:focus-visible .art::before { opacity: 1; transform: scale(1.1); }
+.tile[data-trend="up"] .art::before {
+  background: radial-gradient(circle at 40% 40%, var(--rise), transparent 60%),
+              radial-gradient(circle at 65% 65%, var(--rise-2), transparent 60%);
+}
+.tile[data-trend="down"] .art::before {
+  background: radial-gradient(circle at 40% 40%, var(--fall), transparent 60%),
+              radial-gradient(circle at 65% 65%, var(--fall-2), transparent 60%);
+}
 .tile .initials {
   position: relative;
   font-size: clamp(44px, 5vw, 68px);
@@ -162,6 +179,8 @@ button {
 .tile .value { font-size: 14px; font-weight: 500; }
 .tile .name { margin-top: 2px; }
 .tile .club { color: var(--muted); font-size: 11px; }
+.tile .change { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tile .change.up { color: var(--fg); }
 .tile:focus-visible { outline: 1px solid var(--dim); outline-offset: 6px; }
 
 @keyframes rise { from { opacity: 0; transform: translateY(6px); } }
@@ -184,7 +203,21 @@ button {
   transition: transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 .panel.open { transform: none; }
-.close { position: absolute; top: 22px; right: 24px; }
+.panel-nav { position: absolute; top: 22px; right: 24px; display: flex; align-items: center; gap: 14px; }
+.panel-nav .step { color: var(--dim); font-size: 14px; line-height: 1; transition: color 0.2s; }
+.panel-nav .step:hover { color: var(--fg); }
+.panel-nav .step:disabled { visibility: hidden; }
+
+/* about: same panel, prose instead of stats */
+.about p { margin: 0 0 14px; line-height: 1.7; color: var(--fg); }
+.about p .muted, .about .muted { color: var(--muted); }
+.about h3 { font-size: 11px; font-weight: 400; color: var(--muted); margin: 28px 0 10px; }
+.about a { color: inherit; text-decoration: underline; text-decoration-color: var(--dim); text-underline-offset: 3px; }
+.about a:hover { text-decoration-color: var(--fg); }
+.about-toggle { display: grid; place-items: center; color: var(--muted); transition: color 0.2s; }
+.about-toggle:hover { color: var(--fg); }
+.about-toggle svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.1; stroke-linecap: round; }
+.about-toggle svg .dot { fill: currentColor; stroke: none; }
 
 .panel h2 { font-size: 18px; font-weight: 400; margin: 28px 0 2px; }
 .panel .sub { color: var(--muted); font-size: 11px; }
@@ -216,7 +249,7 @@ button {
 .trend .dot { fill: var(--bg); stroke: var(--fg); stroke-width: 1; }
 .trend .dot.small { fill: var(--fg); stroke: none; }
 .trend .season { fill: var(--fg); opacity: 0.05; }
-.trend text { fill: var(--muted); font-size: 10px; font-family: inherit; }
+.trend text { fill: var(--muted); font-size: 10px; font-family: inherit; paint-order: stroke; stroke: var(--bg); stroke-width: 3px; stroke-linejoin: round; }
 
 @media (max-width: 600px) {
   .bar { padding: 16px; grid-template-columns: auto 1fr auto; gap: 12px; }
@@ -228,6 +261,8 @@ button {
   .filters { gap: 16px; padding: 0 16px 14px; }
   .group { gap: 12px; flex-wrap: wrap; justify-content: center; }
   .panel { padding: 24px 20px 40px; }
+  .right { gap: 12px; }
+  .panel-nav { top: 18px; right: 16px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
