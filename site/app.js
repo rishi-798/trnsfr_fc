@@ -1,7 +1,11 @@
 // transfer fc: browse premier league player-seasons from data/players.json
 // (built by scripts/export_site_data.py)
 
-const state = { data: null, season: null, group: "all", sort: "value" };
+const state = { data: null, season: null, group: "all", sort: "value", query: "" };
+
+// lowercase and strip accents so "odegaard" finds "ødegaard" and "nunez" finds "núñez"
+const fold = (s) => (s ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+  .replace(/ø/g, "o").replace(/æ/g, "ae").replace(/ß/g, "ss").replace(/ł/g, "l").replace(/đ/g, "d");
 const $ = (id) => document.getElementById(id);
 
 const UCL = ["—", "league phase", "playoff", "last 16", "quarter-final", "semi-final", "final"];
@@ -46,6 +50,7 @@ const shownValue = (p) => p.predicted ?? p.values[2];
 function visiblePlayers() {
   let rows = state.data.players.filter((p) => p.season === state.season);
   if (state.group !== "all") rows = rows.filter((p) => p.group === state.group);
+  if (state.query) rows = rows.filter((p) => fold(`${p.name} ${p.club}`).includes(state.query));
   const key = state.sort === "value"
     ? (p) => shownValue(p) ?? -1
     // "all" compares positions by percentile; within one position the raw score works
@@ -55,8 +60,9 @@ function visiblePlayers() {
 
 function renderGrid() {
   const rows = visiblePlayers();
-  $("count").textContent = `${rows.length} players`;
-  $("grid").innerHTML = "";
+  const gw = state.data.live && state.season === state.data.live.season ? ` · after gw ${state.data.live.gameweek}` : "";
+  $("count").textContent = `${rows.length} ${rows.length === 1 ? "player" : "players"}${gw}`;
+  $("grid").innerHTML = rows.length || !state.query ? "" : `<p class="empty">no players found</p>`;
   rows.forEach((p, i) => {
     const tile = document.createElement("button");
     tile.className = "tile";
@@ -125,7 +131,11 @@ function trendSvg(p) {
 }
 
 // the season's own valuation updates, spelled out under the chart
+// the season in progress (from the fantasy premier league feed), if this is it
+const liveSeason = (p) => state.data.live && p.season === state.data.live.season;
+
 function seasonUpdates(p) {
+  if (liveSeason(p)) return `<div class="note">no valuations yet this season (source paused in june 2026)</div>`;
   const from = `${p.season}-06-30`, to = `${p.season + 1}-06-30`;
   const rows = (state.data.valuations?.[p.id] ?? []).filter(([date]) => date > from && date <= to);
   return rows.length
@@ -139,7 +149,8 @@ function predictionNote(p) {
   }
   const change = Math.round((p.predicted / p.values[2] - 1) * 100);
   const years = p.trained_on.split("-").map((y) => String(y).slice(2)).join("–");
-  return `${change >= 0 ? "+" : "−"}${Math.abs(change)}% from start · learned from ${years}`;
+  const basis = liveSeason(p) ? `forecast after gw ${state.data.live.gameweek}` : `learned from ${years}`;
+  return `${change >= 0 ? "+" : "−"}${Math.abs(change)}% from start · ${basis}`;
 }
 
 // actual = market value at season start: the latest valuation on/before 30 jun before
@@ -178,7 +189,7 @@ function openPanel(p) {
   const stats = [
     ["age", p.age], ["apps", p.apps], ["minutes", p.minutes], ["goals", p.goals], ["assists", p.assists],
     ...(p.group === "def" || p.group === "gk" ? [["clean sheets", p.clean_sheets]] : []),
-    ["cards", `${p.yellows}y ${p.reds}r`], ["club finish", p.league_position ?? "—"],
+    ["cards", `${p.yellows}y ${p.reds}r`], [liveSeason(p) ? "club position so far" : "club finish", p.league_position ?? "—"],
     ["champions league", UCL[p.ucl_stage]], ["promoted club", p.promoted ? "yes" : "no"],
     ...(p.other_league_minutes ? [["other league min", p.other_league_minutes]] : []),
     ["last season", prev],
@@ -231,6 +242,19 @@ function closePanel() {
 }
 
 // --- start -------------------------------------------------------------
+function toggleSearch(open) {
+  $("search").hidden = !open;
+  $("search-toggle").setAttribute("aria-expanded", String(open));
+  if (open) {
+    $("search-input").focus();
+  } else {
+    // closing clears the search so the grid goes back to everyone
+    $("search-input").value = "";
+    if (state.query) { state.query = ""; renderGrid(); }
+    $("search-toggle").focus();
+  }
+}
+
 async function main() {
   loadTheme();
   $("theme-toggle").addEventListener("click", toggleTheme);
@@ -241,7 +265,16 @@ async function main() {
   });
   $("panel-close").addEventListener("click", closePanel);
   $("scrim").addEventListener("click", closePanel);
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closePanel(); });
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    if ($("panel").getAttribute("aria-hidden") === "false") closePanel();
+    else if (!$("search").hidden) toggleSearch(false);
+  });
+  $("search-toggle").addEventListener("click", () => toggleSearch($("search").hidden));
+  $("search-input").addEventListener("input", (e) => {
+    state.query = fold(e.target.value.trim());
+    renderGrid();
+  });
   bindToggleGroup("positions", "group", "group");
   bindToggleGroup("sorts", "sort", "sort");
 

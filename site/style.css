@@ -64,6 +64,37 @@ button {
 #menu-toggle[aria-expanded="true"] { transform: rotate(45deg); }
 .right { justify-self: end; display: flex; gap: 16px; align-items: center; }
 .count { color: var(--muted); font-size: 11px; }
+.center { display: flex; align-items: center; gap: 28px; }
+
+/* search: just the icon until opened, then a bare underlined field below the bar */
+.search-toggle { display: grid; place-items: center; color: var(--dim); transition: color 0.2s; }
+.search-toggle:hover { color: var(--muted); }
+.search-toggle[aria-expanded="true"] { color: var(--fg); }
+.search-toggle svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linecap: round; }
+.search { display: flex; justify-content: center; padding: 0 24px 18px; }
+.search[hidden] { display: none; }
+.search input {
+  width: min(320px, 100%);
+  font: inherit;
+  font-size: 12px;
+  color: var(--fg);
+  letter-spacing: inherit;
+  text-transform: lowercase;
+  text-align: center;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  padding: 6px 0;
+  outline: none;
+  transition: border-color 0.2s;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.search input:focus { border-bottom-color: var(--muted); }
+.search input::placeholder { color: var(--dim); }
+.search input::-webkit-search-cancel-button { display: none; }
+.empty { grid-column: 1 / -1; text-align: center; color: var(--muted); font-size: 12px; }
 
 .seasons, .group { display: flex; gap: 18px; }
 .seasons button, .group button { color: var(--dim); transition: color 0.2s; }
@@ -190,6 +221,8 @@ button {
 @media (max-width: 600px) {
   .bar { padding: 16px; grid-template-columns: auto 1fr auto; gap: 12px; }
   .seasons { gap: 10px; font-size: 11px; justify-content: center; }
+  .center { gap: 14px; justify-content: center; }
+  .search { padding: 0 16px 14px; }
   .count { display: none; }
   .grid { grid-template-columns: repeat(2, 1fr); gap: 40px 16px; padding: 24px 16px 64px; }
   .filters { gap: 16px; padding: 0 16px 14px; }

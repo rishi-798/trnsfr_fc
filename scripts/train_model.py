@@ -13,6 +13,11 @@ absolute log error), secondary MAE in euros, both against the baseline "value un
 Site predictions are walk-forward: each season is predicted by a model trained only on
 earlier seasons (2022/23 has none), so no shown prediction has seen its own answer.
 
+The live season in progress (data/processed/live_season.csv, from update_live.py) is
+predicted too. The model learned from full-season totals, so this season's minutes, goals
+and assists are projected to a full season (x 1 / season_fraction) and blended with last
+season's: 60% this season's pace, 40% last season (pace alone if last season is missing).
+
 Reads data/processed/player_seasons.csv; writes data/processed/predictions.csv and
 data/processed/model_metrics.json.
 """
@@ -21,6 +26,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.inspection import permutation_importance
 from sklearn.linear_model import RidgeCV
 from sklearn.pipeline import make_pipeline
@@ -28,13 +34,15 @@ from sklearn.preprocessing import StandardScaler
 
 ROOT = Path(__file__).resolve().parent.parent
 TABLE = ROOT / "data" / "processed" / "player_seasons.csv"
+LIVE = ROOT / "data" / "processed" / "live_season.csv"
 PREDICTIONS = ROOT / "data" / "processed" / "predictions.csv"
 METRICS = ROOT / "data" / "processed" / "model_metrics.json"
 EXPLANATIONS = ROOT / "data" / "processed" / "explanations.csv"
 
 # Per-feature contributions are summed into these human-level reasons for the explanations
 REASON_GROUPS = {
-    "age": ["age", "age_sq"], "minutes": ["minutes"], "goals": ["goals"], "assists": ["assists"],
+    "age": ["age", "age_sq"], "minutes": ["minutes", "minutes_x_value"], "goals": ["goals", "goals_x_value"],
+    "assists": ["assists"],
     "scoring_rate": ["ga_per90"],
     # start value and its trends are strongly linked, so they're explained together
     # (they stay separate model features)
@@ -51,6 +59,11 @@ TEST_SEASON = 2025
 SEED = 42
 ALPHAS = np.logspace(-2, 3, 30)  # ridge penalty strengths tried; the best is picked by cross-validation
 PEAK_AGE = 26  # centre of the age curve
+THIS_SEASON_WEIGHT = 0.6  # season in progress: weight on this season's pace vs last season
+# The more a player is already worth, the less extra minutes and goals add (values flatten
+# out near the top: €100m+ players rarely rise). Applied between €20m and €100m and flat
+# above, so the few €100m+ players in the data can't push it too far.
+DAMPING_FROM, DAMPING_TO = 20e6, 100e6
 
 NUMERIC = [
     "age", "minutes", "goals", "assists",
@@ -66,6 +79,15 @@ PREV_LEAGUES = ["GB1", "ES1", "L1", "IT1", "FR1"]  # anything else -> prev_leagu
 
 def features(df):
     X = df[NUMERIC].astype(float).copy()
+    # season in progress (season_fraction < 1): project this season's totals to a full
+    # season, then blend with last season so a hot or cold start doesn't dominate
+    if "season_fraction" in df:
+        fraction = df["season_fraction"].fillna(1.0)
+        in_progress = fraction < 1
+        for col in ["minutes", "goals", "assists"]:
+            pace = X[col] / fraction
+            blended = THIS_SEASON_WEIGHT * pace + (1 - THIS_SEASON_WEIGHT) * df[f"prev_{col}"]
+            X[col] = np.where(in_progress, blended.fillna(pace), X[col])
     # linear models need relationships that are roughly straight lines, so reshape:
     X["log_value"] = np.log(df.value_1y_ago)  # a €10m change matters more at €5m than at €100m
     X["trend_1y"] = np.log(df.value_1y_ago / df.value_2y_ago)  # last year's move
@@ -82,6 +104,10 @@ def features(df):
         X[f"prev_stats_missing_{reason}"] = (df.prev_stats_missing_reason == reason).astype(int)
     X["value_2y_ago_missing"] = df.value_2y_ago.isna().astype(int)
     X["value_3y_ago_missing"] = df.value_3y_ago.isna().astype(int)
+    # how far above €20m the player starts (log scale, capped at €100m; 0 below €20m)
+    above = np.clip(X["log_value"] - np.log(DAMPING_FROM), 0, np.log(DAMPING_TO / DAMPING_FROM))
+    X["minutes_x_value"] = X["minutes"] * above
+    X["goals_x_value"] = X["goals"] * above
     # linear regression can't take blanks: missing history -> 0, flagged by the indicators above
     return X.fillna(0)
 
@@ -90,8 +116,22 @@ def target(df):
     return np.log(df.value_end / df.value_1y_ago)
 
 
+class ClipToTrainingRange(BaseEstimator, TransformerMixin):
+    """Cap each feature at the range seen in training. A straight line keeps going, so
+    without this an early-season projection (e.g. 8 goals in 6 games -> 51) beyond any real
+    season would be extrapolated into an extreme prediction."""
+
+    def fit(self, X, y=None):
+        X = np.asarray(X, dtype=float)
+        self.low_, self.high_ = X.min(axis=0), X.max(axis=0)
+        return self
+
+    def transform(self, X):
+        return np.clip(np.asarray(X, dtype=float), self.low_, self.high_)
+
+
 def train(df):
-    model = make_pipeline(StandardScaler(), RidgeCV(alphas=ALPHAS))
+    model = make_pipeline(ClipToTrainingRange(), StandardScaler(), RidgeCV(alphas=ALPHAS))
     model.fit(features(df), target(df))
     return model
 
@@ -107,8 +147,8 @@ def explain(model, df):
     average (in standardized units). For every row: base + sum(reasons) == predicted log change.
     """
     X = features(df)
-    scaler, ridge = model[0], model[-1]
-    values = pd.DataFrame(scaler.transform(X) * ridge.coef_, columns=X.columns, index=df.index)
+    ridge = model[-1]
+    values = pd.DataFrame(model[:-1].transform(X) * ridge.coef_, columns=X.columns, index=df.index)
     gap = np.abs(ridge.intercept_ + values.sum(axis=1) - model.predict(X)).max()
     assert gap < 1e-6, f"contributions don't add up to the prediction (gap {gap})"
 
@@ -133,6 +173,8 @@ def scores(actual, predicted):
 
 def main():
     table = pd.read_csv(TABLE)
+    if LIVE.exists():  # predicted like any later season; it has no answer yet, so never trained on
+        table = pd.concat([table, pd.read_csv(LIVE)], ignore_index=True)
     has_start = table.value_1y_ago.notna()
     labelled = table[table.usable_for_training & has_start]
 

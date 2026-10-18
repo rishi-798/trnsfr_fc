@@ -24,6 +24,8 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent.parent
 RAW = ROOT / "data" / "raw"
 TABLE = ROOT / "data" / "processed" / "player_seasons.csv"
+LIVE = ROOT / "data" / "processed" / "live_season.csv"
+LIVE_STATE = ROOT / "data" / "live" / "state.json"
 PREDICTIONS = ROOT / "data" / "processed" / "predictions.csv"
 EXPLANATIONS = ROOT / "data" / "processed" / "explanations.csv"
 METRICS = ROOT / "data" / "processed" / "model_metrics.json"
@@ -82,6 +84,7 @@ FEATURE_LABELS = {
     "age": "age", "minutes": "minutes played", "goals": "goals", "assists": "assists",
     "log_value": "value at season start", "trend_1y": "last year's value change", "trend_2y": "value change the year before",
     "age_sq": "age curve", "ga_per90": "goals + assists per 90",
+    "minutes_x_value": "minutes, damped for expensive players", "goals_x_value": "goals, damped for expensive players",
     "club_league_position": "club league finish", "ucl_stage_reached": "champions league run",
     "other_league_minutes": "minutes in other leagues", "prev_minutes": "last season minutes",
     "prev_goals": "last season goals", "prev_assists": "last season assists", "promoted_club": "promoted club",
@@ -100,6 +103,7 @@ UCL_NAMES = ["no champions league", "champions league league phase", "champions 
              "champions league final"]
 MIN_PUSH = 0.01  # ignore reasons that move the prediction by less than ~1%
 MIN_CHANGE = 0.03  # predicted changes smaller than this read as "balanced"
+DAMPING_FROM = 20e6  # same as train_model.py: above this, minutes and goals count for less
 
 
 def money(v):
@@ -116,16 +120,29 @@ def ordinal(n):
     return f"{n}{'th' if 10 <= n % 100 <= 20 else {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')}"
 
 
+def in_progress(row):
+    """True for the live season, whose stats are totals so far (the model scales them up)."""
+    fraction = getattr(row, "season_fraction", np.nan)
+    return pd.notna(fraction) and fraction < 1
+
+
 def phrase(reason, up, row):
     """One short template phrase for a reason, given whether it pushed the value up."""
     if reason == "age":
         return f"age {int(row.age)}"  # direction comes from "pushed up" / "held back"
+    so_far = " so far" if in_progress(row) else ""
+    # for expensive players the model damps minutes and goals, so a good tally can still
+    # pull the value down: say so instead of calling it "limited" or "only"
+    if reason in ("minutes", "goals") and not up and row.value_1y_ago > DAMPING_FROM and getattr(row, reason) > 0:
+        n = getattr(row, reason)
+        stat = f"{n:,} minutes" if reason == "minutes" else f"{n} goal{'' if n == 1 else 's'}"
+        return f"{stat}{so_far} (worth less at this price)"
     if reason == "minutes":
-        return f"regular minutes ({row.minutes:,})" if up else f"limited minutes ({row.minutes:,})"
+        return f"regular minutes ({row.minutes:,}{so_far})" if up else f"limited minutes ({row.minutes:,}{so_far})"
     if reason in ("goals", "assists"):
         n = getattr(row, reason)
         word = reason[:-1] if n == 1 else reason
-        return f"{n} {word}" if up else (f"no {reason}" if n == 0 else f"only {n} {word}")
+        return f"{n} {word}{so_far}" if up else (f"no {reason}{so_far}" if n == 0 else f"only {n} {word}{so_far}")
     if reason == "scoring_rate":
         per90 = (row.goals + row.assists) / max(row.minutes, 90) * 90
         return f"{per90:.2f} goals + assists per 90"
@@ -152,7 +169,10 @@ def phrase(reason, up, row):
     if reason == "position":
         return f"{row.position.lower()} position"
     if reason == "club_finish":
-        return f"club finished {ordinal(row.club_league_position)}" if pd.notna(row.club_league_position) else "club finish"
+        if pd.isna(row.club_league_position):
+            return "club finish"
+        place = ordinal(row.club_league_position)
+        return f"club {place} so far" if in_progress(row) else f"club finished {place}"
     if reason == "ucl":
         return UCL_NAMES[int(row.ucl_stage_reached)]
     if reason == "promoted":
@@ -216,9 +236,16 @@ def valuation_history(table):
 
 def main():
     table = pd.read_csv(TABLE)
+    if LIVE.exists():  # the season in progress, from update_live.py (brings its own cards/clean sheets)
+        table = pd.concat([table, pd.read_csv(LIVE)], ignore_index=True)
+        counts = ["apps", "minutes", "goals", "assists", "other_league_minutes"]
+        table[counts] = table[counts].astype(int)  # concat makes them floats
     positions = pd.read_csv(RAW / "players.csv.gz", usecols=["player_id", "sub_position"])
     df = (table.merge(positions, on="player_id", how="left")
-          .merge(season_events(table.season.unique()), on=["player_id", "season"], how="left"))
+          .merge(season_events(table.season.unique()), on=["player_id", "season"], how="left", suffixes=("_live", "")))
+    for col in ["yellows", "reds", "clean_sheets"]:
+        if f"{col}_live" in df:
+            df[col] = df[col].fillna(df.pop(f"{col}_live"))
     if PREDICTIONS.exists():
         df = df.merge(pd.read_csv(PREDICTIONS), on=["player_id", "season"], how="left")
     else:
@@ -229,6 +256,9 @@ def main():
         reasons = [c for c in contrib_rows.columns if c not in ("player_id", "season")]
         # prefix so reason names (goals, age, position...) don't collide with stat columns
         df = df.merge(contrib_rows.rename(columns={r: f"contrib_{r}" for r in reasons}), on=["player_id", "season"], how="left")
+    # players with no season-start value have no price to show (and no prediction, which
+    # needs a start value); drop them before ranking so ranks only count shown players
+    df = df[df.value_1y_ago.notna()].copy()
     df[["yellows", "reds", "clean_sheets"]] = df[["yellows", "reds", "clean_sheets"]].fillna(0).astype(int)
 
     df["group"] = df.position.map(GROUPS)
@@ -270,6 +300,7 @@ def main():
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps({
         "seasons": sorted(df.season.unique().tolist()), "model": model_summary(), "players": players,
+        "live": json.loads(LIVE_STATE.read_text()) if LIVE.exists() and LIVE_STATE.exists() else None,
         "valuations": valuation_history(table),
     }, ensure_ascii=False))
     print(f"wrote {len(players)} player-seasons to {OUT.relative_to(ROOT)}")

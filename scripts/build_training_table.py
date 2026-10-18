@@ -73,6 +73,65 @@ def ucl_stage(round_name):
     return 0
 
 
+def attach_previous_season(rows, apps, games, covered_leagues):
+    """Last season's league stats (any covered league) for each (player_id, season) row.
+
+    prev_league = where they played the most minutes. A player who appeared (cups, Europe)
+    for a club in a covered league but played no league minutes gets 0, not NA.
+    """
+    league_apps = apps[apps.competition_id.isin(covered_leagues)]
+    prev = league_apps.groupby(["player_id", "season", "competition_id"]).agg(
+        minutes=("minutes_played", "sum"), goals=("goals", "sum"), assists=("assists", "sum")
+    ).reset_index()
+    prev_league = (
+        prev.sort_values("minutes", ascending=False)
+        .drop_duplicates(["player_id", "season"])[["player_id", "season", "competition_id"]]
+        .rename(columns={"competition_id": "prev_league"})
+    )
+    prev_totals = prev.groupby(["player_id", "season"])[["minutes", "goals", "assists"]].sum().reset_index()
+    prev_stats = prev_totals.merge(prev_league, on=["player_id", "season"])
+    prev_stats["season"] += 1  # align last season's stats with this season's row
+    prev_stats = prev_stats.rename(columns={"minutes": "prev_minutes", "goals": "prev_goals", "assists": "prev_assists"})
+    rows = rows.merge(prev_stats, on=["player_id", "season"], how="left")
+
+    # club = the one they appeared for most often last season
+    league_games = games[games.competition_id.isin(covered_leagues)]
+    club_league = pd.concat([
+        league_games[["home_club_id", "season", "competition_id"]].set_axis(["club_id", "season", "league"], axis=1),
+        league_games[["away_club_id", "season", "competition_id"]].set_axis(["club_id", "season", "league"], axis=1),
+    ]).drop_duplicates(["club_id", "season"])
+    last_club = (
+        apps.groupby(["player_id", "season", "player_club_id"]).size().rename("n").reset_index()
+        .sort_values("n", ascending=False).drop_duplicates(["player_id", "season"])
+        .rename(columns={"player_club_id": "club_id"})
+        .merge(club_league, on=["club_id", "season"])[["player_id", "season", "league"]]
+    )
+    last_club["season"] += 1
+    rows = rows.merge(last_club, on=["player_id", "season"], how="left")
+    true_zero = rows.prev_minutes.isna() & rows.league.notna()
+    rows.loc[true_zero, ["prev_minutes", "prev_goals", "prev_assists"]] = 0
+    rows.loc[true_zero, "prev_league"] = rows.loc[true_zero, "league"]
+    rows = rows.drop(columns="league")
+    return rows
+
+
+def attach_values(rows, valuations):
+    """The answer (value at the end of the season) and the history (1-3 seasons before),
+    plus why last season's stats are missing (checked after values are attached)."""
+    rows["cutoff"] = season_cutoff(rows.season)
+    rows = value_at(rows, valuations, "cutoff", "value_end")
+    for years in range(1, HISTORY_YEARS + 1):
+        rows["cutoff"] = season_cutoff(rows.season, years_back=years)
+        rows = value_at(rows, valuations, "cutoff", f"value_{years}y_ago")
+        rows[f"value_{years}y_ago_missing_reason"] = rows[f"value_{years}y_ago"].isna().map({True: "no_valuation", False: None})
+
+    no_prev = rows.prev_minutes.isna()
+    rows["prev_stats_missing_reason"] = None
+    rows.loc[no_prev & rows.value_1y_ago.notna(), "prev_stats_missing_reason"] = "no_stats_in_dataset"
+    rows.loc[no_prev & rows.value_1y_ago.isna(), "prev_stats_missing_reason"] = "no_valuation"
+    return rows
+
+
 def main():
     players, valuations, appearances, games, competitions = load()
     clubs = pd.read_csv(RAW / "clubs.csv.gz", usecols=["club_id", "name"]).rename(columns={"name": "club_name"})
@@ -130,40 +189,7 @@ def main():
     season_start = pd.to_datetime(rows.season.astype(str) + "-08-01")
     rows["age"] = ((season_start - rows.date_of_birth).dt.days / 365.25).round(1)
 
-    # Last season's stats from any covered league; prev_league = where they played the most minutes
-    prev = league_apps.groupby(["player_id", "season", "competition_id"]).agg(
-        minutes=("minutes_played", "sum"), goals=("goals", "sum"), assists=("assists", "sum")
-    ).reset_index()
-    prev_league = (
-        prev.sort_values("minutes", ascending=False)
-        .drop_duplicates(["player_id", "season"])[["player_id", "season", "competition_id"]]
-        .rename(columns={"competition_id": "prev_league"})
-    )
-    prev_totals = prev.groupby(["player_id", "season"])[["minutes", "goals", "assists"]].sum().reset_index()
-    prev_stats = prev_totals.merge(prev_league, on=["player_id", "season"])
-    prev_stats["season"] += 1  # align last season's stats with this season's row
-    prev_stats = prev_stats.rename(columns={"minutes": "prev_minutes", "goals": "prev_goals", "assists": "prev_assists"})
-    rows = rows.merge(prev_stats, on=["player_id", "season"], how="left")
-
-    # No league minutes last season, but appeared (cups, Europe) for a club in a covered league:
-    # that's a real 0, not missing. Club = the one they appeared for most often.
-    league_games = games[games.competition_id.isin(covered_leagues)]
-    club_league = pd.concat([
-        league_games[["home_club_id", "season", "competition_id"]].set_axis(["club_id", "season", "league"], axis=1),
-        league_games[["away_club_id", "season", "competition_id"]].set_axis(["club_id", "season", "league"], axis=1),
-    ]).drop_duplicates(["club_id", "season"])
-    last_club = (
-        apps.groupby(["player_id", "season", "player_club_id"]).size().rename("n").reset_index()
-        .sort_values("n", ascending=False).drop_duplicates(["player_id", "season"])
-        .rename(columns={"player_club_id": "club_id"})
-        .merge(club_league, on=["club_id", "season"])[["player_id", "season", "league"]]
-    )
-    last_club["season"] += 1
-    rows = rows.merge(last_club, on=["player_id", "season"], how="left")
-    true_zero = rows.prev_minutes.isna() & rows.league.notna()
-    rows.loc[true_zero, ["prev_minutes", "prev_goals", "prev_assists"]] = 0
-    rows.loc[true_zero, "prev_league"] = rows.loc[true_zero, "league"]
-    rows = rows.drop(columns="league")
+    rows = attach_previous_season(rows, apps, games, covered_leagues)
 
     # Same-season stats in other covered leagues (e.g. loaned out mid-season); 0 if none
     other = (
@@ -177,19 +203,7 @@ def main():
     other_columns = ["other_league_minutes", "other_league_goals", "other_league_assists"]
     rows[other_columns] = rows[other_columns].fillna(0).astype(int)
 
-    # Values: the answer (end of this season) and the history (1-3 seasons before)
-    rows["cutoff"] = season_cutoff(rows.season)
-    rows = value_at(rows, valuations, "cutoff", "value_end")
-    for years in range(1, HISTORY_YEARS + 1):
-        rows["cutoff"] = season_cutoff(rows.season, years_back=years)
-        rows = value_at(rows, valuations, "cutoff", f"value_{years}y_ago")
-        rows[f"value_{years}y_ago_missing_reason"] = rows[f"value_{years}y_ago"].isna().map({True: "no_valuation", False: None})
-
-    # Why last season's stats are missing (checked after values are attached)
-    no_prev = rows.prev_minutes.isna()
-    rows["prev_stats_missing_reason"] = None
-    rows.loc[no_prev & rows.value_1y_ago.notna(), "prev_stats_missing_reason"] = "no_stats_in_dataset"
-    rows.loc[no_prev & rows.value_1y_ago.isna(), "prev_stats_missing_reason"] = "no_valuation"
+    rows = attach_values(rows, valuations)
 
     rows["usable_for_training"] = rows.value_end.notna() & (rows.value_end_age_days <= MAX_LABEL_AGE_DAYS)
 

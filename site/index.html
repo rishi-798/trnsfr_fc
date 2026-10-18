@@ -13,7 +13,12 @@
 <body>
   <header class="bar">
     <button class="icon" id="menu-toggle" aria-label="filters" aria-expanded="false">+</button>
-    <nav class="seasons" id="seasons" aria-label="season"></nav>
+    <div class="center">
+      <nav class="seasons" id="seasons" aria-label="season"></nav>
+      <button class="icon search-toggle" id="search-toggle" aria-label="search" aria-expanded="false" aria-controls="search">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.4 10.4 14 14"/></svg>
+      </button>
+    </div>
     <div class="right">
       <span class="count" id="count"></span>
       <button class="icon" id="theme-toggle" aria-label="toggle dark mode">◐</button>
@@ -33,6 +38,10 @@
       <button data-sort="value" class="on">value</button>
       <button data-sort="score">score</button>
     </div>
+  </div>
+
+  <div class="search" id="search" hidden>
+    <input id="search-input" type="search" placeholder="search players or clubs" aria-label="search players or clubs" autocomplete="off" spellcheck="false">
   </div>
 
   <main class="grid" id="grid"></main>
