@@ -183,6 +183,8 @@ button {
 .trend svg { width: 100%; height: 120px; overflow: visible; }
 .trend .line { fill: none; stroke: var(--fg); stroke-width: 1; }
 .trend .dot { fill: var(--bg); stroke: var(--fg); stroke-width: 1; }
+.trend .dot.small { fill: var(--fg); stroke: none; }
+.trend .season { fill: var(--fg); opacity: 0.05; }
 .trend text { fill: var(--muted); font-size: 10px; font-family: inherit; }
 
 @media (max-width: 600px) {

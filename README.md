@@ -6,7 +6,7 @@ Explore Premier League player performance and estimated market values across the
 
 - Browse players by season and position, sorted by value or performance score.
 - Inspect season statistics, valuation history, and model estimates in player detail panels.
-- See per-player explanations derived from SHAP contributions.
+- See per-player explanations built from each factor's exact contribution to the estimate.
 - Compare the model with a baseline that keeps each player's starting value unchanged.
 - Review data quality with a stratified sample of up to 50 player-seasons.
 
@@ -15,14 +15,14 @@ Explore Premier League player performance and estimated market values across the
 If `site/data/players.json` is present, you can browse the exported results without installing the modeling dependencies. From the repository root:
 
 ```sh
-python3 -m http.server 8000 --bind 127.0.0.1 --directory site
+python3 scripts/serve_site.py
 ```
 
-Open [http://localhost:8000](http://localhost:8000). Serve the site over HTTP because it loads its data with `fetch()`. No Node.js build step or backend service is required. Press `Ctrl+C` to stop the server.
+Open [http://localhost:8100](http://localhost:8100). Serve the site over HTTP because it loads its data with `fetch()`. The script tells the browser to recheck files on every load, so regenerated data and code changes appear without a hard refresh; pass a different port as an argument if 8100 is taken. No Node.js build step or backend service is required. Press `Ctrl+C` to stop the server.
 
 ## Set up the Python pipeline
 
-Use Python 3 with `venv` and `pip`. The dependencies are listed in [requirements.txt](requirements.txt): pandas, NumPy, scikit-learn, SHAP, certifi, and Jupyter. Dependency versions are currently unpinned.
+Use Python 3 with `venv` and `pip`. The dependencies are listed in [requirements.txt](requirements.txt): pandas, NumPy, scikit-learn, certifi, and Jupyter. Dependency versions are currently unpinned.
 
 ```sh
 git clone https://github.com/rishi-798/trnsfr_fc.git
@@ -74,7 +74,7 @@ jupyter notebook notebooks/01_explore.ipynb
 
 ## Model and evaluation
 
-The model is a 500-tree `RandomForestRegressor` with random seed 42. It uses age, position, playing time, goals, assists, club context, previous-season performance, and valuation history to estimate the logarithmic change in value:
+The model is a linear regression with a small ridge penalty (`StandardScaler` + `RidgeCV`, penalty chosen by cross-validation). It uses age, position, playing time, goals, assists, club context, previous-season performance, and valuation history to estimate the logarithmic change in value. Because a linear model can only fit straight-line relationships, some features are reshaped first: the starting value enters as a logarithm, value trends as log ratios between consecutive June 30 values, age with a squared term (centred on 26) so value can rise and then fall, and goals plus assists per 90 minutes. Missing history is filled with 0 and flagged by indicator columns.
 
 ```text
 target = log(value_end / value_1y_ago)
@@ -87,12 +87,12 @@ Evaluation trains on 2022/23–2024/25 and tests on 2025/26. The saved [metrics]
 
 | Metric on 2025/26 | Model | Unchanged-value baseline |
 | --- | ---: | ---: |
-| Mean absolute log error (MALE) | 0.2640 | 0.4808 |
-| Mean absolute error (EUR) | €5,245,254 | €8,179,595 |
+| Mean absolute log error (MALE) | 0.2730 | 0.4808 |
+| Mean absolute error (EUR) | €5,188,108 | €8,179,595 |
 
-Lower is better for both metrics. These numbers describe the saved run; regenerating data or changing dependencies can change the results. The metrics file also contains subgroup scores and permutation feature importance.
+Lower is better for both metrics. These numbers describe the saved run; regenerating data or changing dependencies can change the results. The metrics file also contains subgroup scores and permutation feature importance. A 500-tree random forest scored 0.2640 MALE on the same split; the linear model was chosen for its transparency. Run `python scripts/evaluate_groups.py` for errors by season, position, starting-value range, promoted clubs, and missing previous-season stats.
 
-Site predictions use walk-forward training: each season is predicted using only earlier seasons. There are no model predictions for 2022/23 because the training table contains no earlier season, or for players without a starting valuation. The site falls back to the observed ending value when a prediction is unavailable. Grouped SHAP contributions explain each estimate in log-change units; they describe the model's behavior, not causal effects.
+Site predictions use walk-forward training: each season is predicted using only earlier seasons. There are no model predictions for 2022/23 because the training table contains no earlier season, or for players without a starting valuation. The site's "actual" value is the market value at season start, and tiles fall back to it when a prediction is unavailable. Each estimate is explained by grouped per-feature contributions in log-change units: for a linear model these are exact (weight × the player's standardized distance from the training average) and add up to the prediction. They describe the model's behavior, not causal effects.
 
 ## Performance score
 
@@ -135,6 +135,8 @@ scripts/
   make_pilot_sample.py          Generate a manual review sample
   train_model.py                Train, evaluate, and explain predictions
   export_site_data.py           Export browser data and performance scores
+  evaluate_groups.py            Compare model and baseline errors by season and group
+  serve_site.py                 Serve the site locally without stale browser caching
 site/
   index.html                   Static site entry point
   style.css                    Site styling

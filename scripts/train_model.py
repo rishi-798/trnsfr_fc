@@ -1,5 +1,9 @@
 """Train and evaluate the market value model.
 
+Model: linear regression (ridge, i.e. with a small penalty on large weights) on
+standardized features. Values enter on a log scale, value trends as log ratios, and age
+with a squared term so it can rise then fall.
+
 Target: log(value_end / value_1y_ago), the change from the player's value at the start of
 the season. Predicted value = value_1y_ago * exp(prediction).
 
@@ -17,9 +21,10 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import shap
-from sklearn.ensemble import RandomForestRegressor
 from sklearn.inspection import permutation_importance
+from sklearn.linear_model import RidgeCV
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
 
 ROOT = Path(__file__).resolve().parent.parent
 TABLE = ROOT / "data" / "processed" / "player_seasons.csv"
@@ -27,11 +32,13 @@ PREDICTIONS = ROOT / "data" / "processed" / "predictions.csv"
 METRICS = ROOT / "data" / "processed" / "model_metrics.json"
 EXPLANATIONS = ROOT / "data" / "processed" / "explanations.csv"
 
-# SHAP contributions are summed into these human-level reasons for the explanations
+# Per-feature contributions are summed into these human-level reasons for the explanations
 REASON_GROUPS = {
-    "age": ["age"], "minutes": ["minutes"], "goals": ["goals"], "assists": ["assists"],
-    "start_value": ["value_1y_ago"],
-    "value_history": ["value_2y_ago", "value_3y_ago"],
+    "age": ["age", "age_sq"], "minutes": ["minutes"], "goals": ["goals"], "assists": ["assists"],
+    "scoring_rate": ["ga_per90"],
+    # start value and its trends are strongly linked, so they're explained together
+    # (they stay separate model features)
+    "market_value_history": ["log_value", "trend_1y", "trend_2y"],
     "valuation_age": ["value_1y_ago_age_days", "value_2y_ago_age_days", "value_3y_ago_age_days"],
     "club_finish": ["club_league_position"], "ucl": ["ucl_stage_reached"], "promoted": ["promoted_club"],
     "last_season": ["prev_minutes", "prev_goals", "prev_assists"],
@@ -42,14 +49,14 @@ REASON_PREFIXES = {"position": "position_", "prev_league": "prev_league_",
 
 TEST_SEASON = 2025
 SEED = 42
-N_TREES = 500
+ALPHAS = np.logspace(-2, 3, 30)  # ridge penalty strengths tried; the best is picked by cross-validation
+PEAK_AGE = 26  # centre of the age curve
 
 NUMERIC = [
     "age", "minutes", "goals", "assists",
     "other_league_minutes", "other_league_goals", "other_league_assists",
     "club_league_position", "ucl_stage_reached",
     "prev_minutes", "prev_goals", "prev_assists",
-    "value_1y_ago", "value_2y_ago", "value_3y_ago",
     "value_1y_ago_age_days", "value_2y_ago_age_days", "value_3y_ago_age_days",
 ]
 PREV_LEAGUES = ["GB1", "ES1", "L1", "IT1", "FR1"]  # anything else -> prev_league_other
@@ -59,6 +66,12 @@ PREV_LEAGUES = ["GB1", "ES1", "L1", "IT1", "FR1"]  # anything else -> prev_leagu
 
 def features(df):
     X = df[NUMERIC].astype(float).copy()
+    # linear models need relationships that are roughly straight lines, so reshape:
+    X["log_value"] = np.log(df.value_1y_ago)  # a €10m change matters more at €5m than at €100m
+    X["trend_1y"] = np.log(df.value_1y_ago / df.value_2y_ago)  # last year's move
+    X["trend_2y"] = np.log(df.value_2y_ago / df.value_3y_ago)  # the year before
+    X["age_sq"] = (df.age - PEAK_AGE) ** 2  # lets value rise with age then fall
+    X["ga_per90"] = (df.goals + df.assists) / np.maximum(df.minutes, 90) * 90
     X["promoted_club"] = (~df.club_in_pl_last_season.astype(bool)).astype(int)
     for pos in ["Attack", "Midfield", "Defender", "Goalkeeper"]:
         X[f"position_{pos.lower()}"] = (df.position == pos).astype(int)
@@ -69,7 +82,8 @@ def features(df):
         X[f"prev_stats_missing_{reason}"] = (df.prev_stats_missing_reason == reason).astype(int)
     X["value_2y_ago_missing"] = df.value_2y_ago.isna().astype(int)
     X["value_3y_ago_missing"] = df.value_3y_ago.isna().astype(int)
-    return X
+    # linear regression can't take blanks: missing history -> 0, flagged by the indicators above
+    return X.fillna(0)
 
 
 def target(df):
@@ -77,7 +91,7 @@ def target(df):
 
 
 def train(df):
-    model = RandomForestRegressor(n_estimators=N_TREES, random_state=SEED, n_jobs=-1)
+    model = make_pipeline(StandardScaler(), RidgeCV(alphas=ALPHAS))
     model.fit(features(df), target(df))
     return model
 
@@ -87,15 +101,16 @@ def predict_values(model, df):
 
 
 def explain(model, df):
-    """Per-row SHAP contributions (log-change units), grouped into reasons.
+    """Per-row contributions (log-change units), grouped into reasons.
 
-    For every row: base + sum(reasons) == the model's predicted log change.
+    For a linear model these are exact: weight x how far the player is from the training
+    average (in standardized units). For every row: base + sum(reasons) == predicted log change.
     """
     X = features(df)
-    explainer = shap.TreeExplainer(model)
-    values = pd.DataFrame(explainer.shap_values(X, check_additivity=False), columns=X.columns, index=df.index)
-    gap = np.abs(explainer.expected_value + values.sum(axis=1) - model.predict(X)).max()
-    assert gap < 1e-6, f"SHAP contributions don't add up to the prediction (gap {gap})"
+    scaler, ridge = model[0], model[-1]
+    values = pd.DataFrame(scaler.transform(X) * ridge.coef_, columns=X.columns, index=df.index)
+    gap = np.abs(ridge.intercept_ + values.sum(axis=1) - model.predict(X)).max()
+    assert gap < 1e-6, f"contributions don't add up to the prediction (gap {gap})"
 
     groups = dict(REASON_GROUPS)
     for reason, prefix in REASON_PREFIXES.items():
@@ -104,7 +119,7 @@ def explain(model, df):
     assert sorted(assigned) == sorted(X.columns), "every feature must belong to exactly one reason"
 
     reasons = pd.DataFrame({reason: values[cols].sum(axis=1) for reason, cols in groups.items()})
-    reasons.insert(0, "base", float(np.ravel(explainer.expected_value)[0]))
+    reasons.insert(0, "base", float(ridge.intercept_))
     return reasons.round(4)
 
 

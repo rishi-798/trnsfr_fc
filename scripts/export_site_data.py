@@ -11,6 +11,9 @@ Performance score (per 90 minutes, Premier League only, simplified to available 
 then multiplied by minutes / (minutes + 900) so small samples don't dominate.
 A clean sheet = played 60+ minutes and the team conceded 0.
 score_pct = percentile of the score within the same season and position (0-100).
+
+Also exports every dated Transfermarkt valuation per player (for the value trend chart),
+so in-season updates show between the June 30 snapshots the model uses.
 """
 import json
 from pathlib import Path
@@ -77,7 +80,8 @@ def short_club(name):
 
 FEATURE_LABELS = {
     "age": "age", "minutes": "minutes played", "goals": "goals", "assists": "assists",
-    "value_1y_ago": "value at season start", "value_2y_ago": "value 2 years ago", "value_3y_ago": "value 3 years ago",
+    "log_value": "value at season start", "trend_1y": "last year's value change", "trend_2y": "value change the year before",
+    "age_sq": "age curve", "ga_per90": "goals + assists per 90",
     "club_league_position": "club league finish", "ucl_stage_reached": "champions league run",
     "other_league_minutes": "minutes in other leagues", "prev_minutes": "last season minutes",
     "prev_goals": "last season goals", "prev_assists": "last season assists", "promoted_club": "promoted club",
@@ -86,7 +90,7 @@ FEATURE_LABELS = {
 
 REASON_NAMES = {
     "age": "age", "minutes": "minutes played", "goals": "goals", "assists": "assists",
-    "start_value": "value at season start", "value_history": "value history", "valuation_age": "how old the valuations are",
+    "scoring_rate": "goals + assists per 90", "market_value_history": "market value history", "valuation_age": "how old the valuations are",
     "club_finish": "club finish", "ucl": "champions league", "promoted": "promoted club",
     "last_season": "last season", "other_league": "other leagues", "position": "position",
     "prev_league": "last season's league", "missing_history": "missing history",
@@ -95,6 +99,7 @@ UCL_NAMES = ["no champions league", "champions league league phase", "champions 
              "champions league last 16", "champions league quarter-final", "champions league semi-final",
              "champions league final"]
 MIN_PUSH = 0.01  # ignore reasons that move the prediction by less than ~1%
+MIN_CHANGE = 0.03  # predicted changes smaller than this read as "balanced"
 
 
 def money(v):
@@ -119,11 +124,33 @@ def phrase(reason, up, row):
         return f"regular minutes ({row.minutes:,})" if up else f"limited minutes ({row.minutes:,})"
     if reason in ("goals", "assists"):
         n = getattr(row, reason)
-        return f"{n} {reason}" if up else (f"no {reason}" if n == 0 else f"only {n} {reason}")
-    if reason == "start_value":
-        return f"room to grow from {money(row.value_1y_ago)}" if up else f"already valued at {money(row.value_1y_ago)}"
-    if reason == "value_history":
-        return f"value history ({money(row.value_3y_ago)} → {money(row.value_1y_ago)})"
+        word = reason[:-1] if n == 1 else reason
+        return f"{n} {word}" if up else (f"no {reason}" if n == 0 else f"only {n} {word}")
+    if reason == "scoring_rate":
+        per90 = (row.goals + row.assists) / max(row.minutes, 90) * 90
+        return f"{per90:.2f} goals + assists per 90"
+    if reason == "market_value_history":
+        # start value and its trend in one phrase (the model sees them as separate features)
+        # the most recent year's move (3 years back only if 2 is missing), so a peak in
+        # between isn't skipped (e.g. 110m -> 150m -> 100m is a fall from 150m)
+        earlier = row.value_2y_ago if pd.notna(row.value_2y_ago) else row.value_3y_ago
+        if pd.isna(earlier):
+            return f"room to grow from {money(row.value_1y_ago)}" if up else f"already valued at {money(row.value_1y_ago)}"
+        if abs(row.value_1y_ago / earlier - 1) < 0.05:
+            return f"value steady at {money(row.value_1y_ago)}"
+        rose = row.value_1y_ago > earlier
+        # rising values that push down = the model expects a big jump to level off;
+        # falling values that push up = it expects a rebound
+        label = {(True, True): "rising value", (True, False): "already rose",
+                 (False, False): "falling value", (False, True): "rebound after drop"}[(rose, up)]
+        return f"{label} {money(earlier)} → {money(row.value_1y_ago)}"
+    if reason == "missing_history":
+        # describes what's actually on record: a linear model also credits *complete* history
+        gaps = (["no last-season stats"] if pd.isna(row.prev_minutes) else []) + (
+            ["short value history"] if pd.isna(row.value_2y_ago) or pd.isna(row.value_3y_ago) else [])
+        return " and ".join(gaps) if gaps else "full history on record"
+    if reason == "position":
+        return f"{row.position.lower()} position"
     if reason == "club_finish":
         return f"club finished {ordinal(row.club_league_position)}" if pd.notna(row.club_league_position) else "club finish"
     if reason == "ucl":
@@ -140,16 +167,22 @@ def phrase(reason, up, row):
 
 
 def explanation(row, reasons):
-    """Template sentence + per-player factor list from grouped SHAP contributions."""
-    pushes = {r: getattr(row, f"shap_{r}") for r in reasons if pd.notna(getattr(row, f"shap_{r}"))}
-    ups = sorted([r for r, v in pushes.items() if v > MIN_PUSH], key=lambda r: -pushes[r])[:2]
-    downs = sorted([r for r, v in pushes.items() if v < -MIN_PUSH], key=lambda r: pushes[r])[:1]
+    """Template sentence + per-player factor list from grouped model contributions."""
+    pushes = {r: getattr(row, f"contrib_{r}") for r in reasons if pd.notna(getattr(row, f"contrib_{r}"))}
+    ups = sorted([r for r, v in pushes.items() if v > MIN_PUSH], key=lambda r: -pushes[r])
+    downs = sorted([r for r, v in pushes.items() if v < -MIN_PUSH], key=lambda r: pushes[r])
     change = row.predicted_value / row.value_1y_ago - 1
-    text = f"{money(row.predicted_value)} ({change:+.0%} from {money(row.value_1y_ago)})."
-    if ups:
-        text += " pushed up by: " + ", ".join(phrase(r, True, row) for r in ups) + "."
-    if downs:
-        text += " held back by: " + ", ".join(phrase(r, False, row) for r in downs) + "."
+    text = f"predicted {money(row.predicted_value)}, {change:+.0%} from {money(row.value_1y_ago)} at season start."
+    # lead with the side that matches the predicted direction, so the sentence never
+    # opens with reasons that point the opposite way to the change
+    rising = change >= 0
+    main, other = (ups, downs) if rising else (downs, ups)
+    main_label, other_label = ("pushed up by", "held back by") if rising else ("held back by", "pushed up by")
+    offset = "roughly cancelled out by" if abs(change) < MIN_CHANGE else "partly offset by"
+    if main:
+        text += f" {main_label}: " + ", ".join(phrase(r, rising, row) for r in main[:2]) + "."
+    if other:
+        text += f" {offset}: " + phrase(other[0], not rising, row) + "."
     # effect of each reason on its own, as a % change (contributions multiply in euro terms)
     factors = sorted(
         ({"name": REASON_NAMES[r], "effect": round(float(np.exp(v) - 1), 3)} for r, v in pushes.items() if abs(v) > MIN_PUSH),
@@ -171,6 +204,16 @@ def model_summary():
     }
 
 
+def valuation_history(table):
+    """All dated valuations per player from 3 years before the first season to the last cutoff."""
+    seasons = table.season.unique()
+    v = pd.read_csv(RAW / "player_valuations.csv.gz", usecols=["player_id", "date", "market_value_in_eur"])
+    v = v[v.player_id.isin(table.player_id)
+          & (v.date > f"{seasons.min() - 3}-06-30") & (v.date <= f"{seasons.max() + 1}-06-30")]
+    return {str(pid): g.sort_values("date")[["date", "market_value_in_eur"]].values.tolist()
+            for pid, g in v.groupby("player_id")}
+
+
 def main():
     table = pd.read_csv(TABLE)
     positions = pd.read_csv(RAW / "players.csv.gz", usecols=["player_id", "sub_position"])
@@ -182,10 +225,10 @@ def main():
         df["predicted_value"], df["trained_on"] = np.nan, None
     reasons = []
     if EXPLANATIONS.exists():
-        shap_rows = pd.read_csv(EXPLANATIONS).drop(columns="base")
-        reasons = [c for c in shap_rows.columns if c not in ("player_id", "season")]
+        contrib_rows = pd.read_csv(EXPLANATIONS).drop(columns="base")
+        reasons = [c for c in contrib_rows.columns if c not in ("player_id", "season")]
         # prefix so reason names (goals, age, position...) don't collide with stat columns
-        df = df.merge(shap_rows.rename(columns={r: f"shap_{r}" for r in reasons}), on=["player_id", "season"], how="left")
+        df = df.merge(contrib_rows.rename(columns={r: f"contrib_{r}" for r in reasons}), on=["player_id", "season"], how="left")
     df[["yellows", "reds", "clean_sheets"]] = df[["yellows", "reds", "clean_sheets"]].fillna(0).astype(int)
 
     df["group"] = df.position.map(GROUPS)
@@ -199,7 +242,7 @@ def main():
     players = []
     for row in df.itertuples():
         clean = lambda v: None if pd.isna(v) else (int(v) if float(v).is_integer() else float(v))
-        has_explanation = reasons and pd.notna(row.predicted_value) and pd.notna(getattr(row, f"shap_{reasons[0]}"))
+        has_explanation = reasons and pd.notna(row.predicted_value) and pd.notna(getattr(row, f"contrib_{reasons[0]}"))
         explain_text, factors = explanation(row, reasons) if has_explanation else (None, [])
         players.append({
             "id": int(row.player_id), "name": row.name, "season": int(row.season),
@@ -227,6 +270,7 @@ def main():
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps({
         "seasons": sorted(df.season.unique().tolist()), "model": model_summary(), "players": players,
+        "valuations": valuation_history(table),
     }, ensure_ascii=False))
     print(f"wrote {len(players)} player-seasons to {OUT.relative_to(ROOT)}")
 

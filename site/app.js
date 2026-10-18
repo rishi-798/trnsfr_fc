@@ -39,8 +39,9 @@ function toggleTheme() {
 }
 
 // --- grid --------------------------------------------------------------
-// tiles show the prediction; 22/23 has none (no earlier season to train on), so actual
-const shownValue = (p) => p.predicted ?? p.values[3];
+// tiles show the prediction; 22/23 has none (no earlier season to train on), so the
+// actual value, which is the season-start value
+const shownValue = (p) => p.predicted ?? p.values[2];
 
 function visiblePlayers() {
   let rows = state.data.players.filter((p) => p.season === state.season);
@@ -93,31 +94,60 @@ function bindToggleGroup(containerId, attr, key) {
 }
 
 // --- detail panel ------------------------------------------------------
+const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+const shortDate = (iso) => `${+iso.slice(8)} ${MONTHS[+iso.slice(5, 7) - 1]}`;
+
 function trendSvg(p) {
-  // values are june 30 snapshots: 3y ago, 2y ago, season start, season end
+  // big labelled dots: june 30 snapshots the model uses (3y ago, 2y ago, season start, season end);
+  // small dots: every transfermarkt valuation in between, placed on a real time axis
   const years = [p.season - 2, p.season - 1, p.season, p.season + 1];
-  const pts = p.values.map((v, i) => ({ v, i, label: `jun ${String(years[i]).slice(2)}` }));
-  const known = pts.filter((d) => d.v != null);
+  const day = (iso) => Date.parse(iso) / 864e5;
+  const t0 = day(`${years[0]}-06-30`), t1 = day(`${years[3]}-06-30`);
+  const snaps = p.values.map((v, i) => ({ v, t: day(`${years[i]}-06-30`), label: `jun ${String(years[i]).slice(2)}` }));
+  const known = snaps.filter((d) => d.v != null);
   if (known.length < 2) return `<div class="note">not enough history</div>`;
-  const max = Math.max(...known.map((d) => d.v)), min = Math.min(...known.map((d) => d.v));
-  const x = (i) => 30 + i * 106, y = (v) => 90 - (max === min ? 40 : ((v - min) / (max - min)) * 70);
-  const line = known.map((d) => `${x(d.i)},${y(d.v)}`).join(" ");
+  const updates = (state.data.valuations?.[p.id] ?? [])
+    .map(([date, v]) => ({ v, t: day(date), date }))
+    .filter((d) => d.t > Math.max(t0, known[0].t) && d.t < t1);
+  const all = [...known, ...updates].sort((a, b) => a.t - b.t);
+  const max = Math.max(...all.map((d) => d.v)), min = Math.min(...all.map((d) => d.v));
+  const x = (t) => 30 + ((t - t0) / (t1 - t0)) * 318;
+  const y = (v) => 90 - (max === min ? 40 : ((v - min) / (max - min)) * 70);
+  const line = all.map((d) => `${x(d.t)},${y(d.v)}`).join(" ");
   return `<svg viewBox="0 0 380 120" preserveAspectRatio="none">
+    <rect class="season" x="${x(snaps[2].t)}" y="0" width="${x(snaps[3].t) - x(snaps[2].t)}" height="100"/>
     <polyline class="line" points="${line}"/>
-    ${known.map((d) => `<circle class="dot" cx="${x(d.i)}" cy="${y(d.v)}" r="3"/>
-      <text x="${x(d.i)}" y="${y(d.v) - 10}" text-anchor="middle">${money(d.v)}</text>`).join("")}
-    ${pts.map((d) => `<text x="${x(d.i)}" y="116" text-anchor="middle">${d.label}</text>`).join("")}
+    ${updates.map((d) => `<circle class="dot small" cx="${x(d.t)}" cy="${y(d.v)}" r="1.8"><title>${shortDate(d.date)} ${d.date.slice(0, 4)} · ${money(d.v)}</title></circle>`).join("")}
+    ${known.map((d) => `<circle class="dot" cx="${x(d.t)}" cy="${y(d.v)}" r="3"/>
+      <text x="${x(d.t)}" y="${y(d.v) - 10}" text-anchor="middle">${money(d.v)}</text>`).join("")}
+    ${snaps.map((d) => `<text x="${x(d.t)}" y="116" text-anchor="middle">${d.label}</text>`).join("")}
   </svg>`;
+}
+
+// the season's own valuation updates, spelled out under the chart
+function seasonUpdates(p) {
+  const from = `${p.season}-06-30`, to = `${p.season + 1}-06-30`;
+  const rows = (state.data.valuations?.[p.id] ?? []).filter(([date]) => date > from && date <= to);
+  return rows.length
+    ? `<div class="note">valuations during ${seasonLabel(p.season)}: ${rows.map(([d, v]) => `${shortDate(d)} ${money(v)}`).join(" · ")}</div>`
+    : `<div class="note">no valuation updates during ${seasonLabel(p.season)}</div>`;
 }
 
 function predictionNote(p) {
   if (p.predicted == null) {
     return p.season === state.data.seasons[0] ? "no earlier season to learn from" : "no starting value to predict from";
   }
-  const actual = p.values[3];
-  const off = actual ? Math.round(Math.abs(p.predicted / actual - 1) * 100) : null;
+  const change = Math.round((p.predicted / p.values[2] - 1) * 100);
   const years = p.trained_on.split("-").map((y) => String(y).slice(2)).join("–");
-  return `${off != null ? `${off}% off · ` : ""}learned from ${years}`;
+  return `${change >= 0 ? "+" : "−"}${Math.abs(change)}% from start · learned from ${years}`;
+}
+
+// actual = market value at season start: the latest valuation on/before 30 jun before
+// the season (the model's starting point, so no "% off" accuracy is shown against it)
+function actualNote(p) {
+  const cutoff = `${p.season}-06-30`;
+  const last = (state.data.valuations?.[p.id] ?? []).filter(([date]) => date <= cutoff).at(-1);
+  return last ? `season start · valued ${shortDate(last[0])} ${last[0].slice(2, 4)}` : "season start";
 }
 
 function factorsHtml(p) {
@@ -144,7 +174,7 @@ function openPanel(p) {
   const prev = p.prev.minutes == null
     ? "no data"
     : `${p.prev.minutes} min · ${p.prev.goals}g ${p.prev.assists}a · ${LEAGUES[p.prev.league] ?? p.prev.league ?? ""}`;
-  const stale = p.value_end_age_days > 180 ? `<div class="note">value is ${p.value_end_age_days} days old — excluded from training</div>` : "";
+  const stale = p.value_end_age_days > 180 ? `<div class="note">season-end value is ${p.value_end_age_days} days old — excluded from training</div>` : "";
   const stats = [
     ["age", p.age], ["apps", p.apps], ["minutes", p.minutes], ["goals", p.goals], ["assists", p.assists],
     ...(p.group === "def" || p.group === "gk" ? [["clean sheets", p.clean_sheets]] : []),
@@ -160,7 +190,8 @@ function openPanel(p) {
       <div><div class="label">predicted${p.explanation ? ` <button class="why" id="why" aria-expanded="false">why ↓</button>` : ""}</div>
         <div class="big ${p.predicted == null ? "pending" : ""}">${money(p.predicted)}</div>
         <div class="note">${predictionNote(p)}</div></div>
-      <div><div class="label">actual</div><div class="big">${money(p.values[3])}</div>${stale}</div>
+      <div><div class="label">actual</div><div class="big">${money(p.values[2])}</div>
+        <div class="note">${actualNote(p)}</div>${stale}</div>
     </section>
     ${p.explanation ? `<p class="explain" id="explain" hidden>${p.explanation}</p>` : ""}
     <section>
@@ -168,7 +199,7 @@ function openPanel(p) {
       <div class="vs"><div class="big">${p.score ?? "—"}</div><div class="big">${p.score_rank ?? "—"}<span class="sub">/${p.group_size}</span></div></div>
       <div class="note">rank among ${p.group_size} ${GROUP_NAMES[p.group]} in ${seasonLabel(p.season)}</div>
     </section>
-    <section class="trend"><div class="label">value trend</div>${trendSvg(p)}</section>
+    <section class="trend"><div class="label">value trend</div>${trendSvg(p)}${seasonUpdates(p)}</section>
     <section><div class="label">season</div>
       <div class="stats">${stats.map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join("")}</div>
     </section>
