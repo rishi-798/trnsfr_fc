@@ -1,0 +1,127 @@
+{
+  "test_season": 2025,
+  "train_rows": 1560,
+  "test_rows": 506,
+  "excluded_no_start_value": 56,
+  "results": {
+    "all": {
+      "model": {
+        "male": 0.264,
+        "mae_eur": 5245254,
+        "n": 506
+      },
+      "baseline": {
+        "male": 0.4808,
+        "mae_eur": 8179595,
+        "n": 506
+      }
+    },
+    "promoted_club": {
+      "model": {
+        "male": 0.3217,
+        "mae_eur": 3077522,
+        "n": 76
+      },
+      "baseline": {
+        "male": 0.5747,
+        "mae_eur": 5408224,
+        "n": 76
+      }
+    },
+    "missing_prev_stats": {
+      "model": {
+        "male": 0.4115,
+        "mae_eur": 3978045,
+        "n": 64
+      },
+      "baseline": {
+        "male": 0.7695,
+        "mae_eur": 6062109,
+        "n": 64
+      }
+    },
+    "position_attack": {
+      "model": {
+        "male": 0.3142,
+        "mae_eur": 6422160,
+        "n": 146
+      },
+      "baseline": {
+        "male": 0.4866,
+        "mae_eur": 9391267,
+        "n": 146
+      }
+    },
+    "position_midfield": {
+      "model": {
+        "male": 0.2462,
+        "mae_eur": 6072762,
+        "n": 143
+      },
+      "baseline": {
+        "male": 0.4987,
+        "mae_eur": 9766084,
+        "n": 143
+      }
+    },
+    "position_defender": {
+      "model": {
+        "male": 0.2385,
+        "mae_eur": 4244250,
+        "n": 177
+      },
+      "baseline": {
+        "male": 0.4574,
+        "mae_eur": 6653107,
+        "n": 177
+      }
+    },
+    "position_goalkeeper": {
+      "model": {
+        "male": 0.2571,
+        "mae_eur": 2420650,
+        "n": 40
+      },
+      "baseline": {
+        "male": 0.499,
+        "mae_eur": 4840000,
+        "n": 40
+      }
+    }
+  },
+  "importances": {
+    "age": 0.164,
+    "minutes": 0.1229,
+    "value_1y_ago": 0.1105,
+    "value_3y_ago": 0.0442,
+    "value_2y_ago": 0.0193,
+    "club_league_position": 0.0185,
+    "goals": 0.0072,
+    "other_league_minutes": 0.0017,
+    "value_2y_ago_age_days": 0.0014,
+    "assists": 0.0014,
+    "prev_minutes": 0.0013,
+    "other_league_goals": 0.0012,
+    "prev_league_GB1": 0.0004,
+    "prev_stats_missing_no_stats_in_dataset": 0.0003,
+    "prev_assists": 0.0001,
+    "value_2y_ago_missing": 0.0001,
+    "position_attack": 0.0001,
+    "prev_league_other": 0.0001,
+    "other_league_assists": 0.0001,
+    "value_3y_ago_missing": 0.0001,
+    "prev_stats_missing_no_valuation": 0.0,
+    "position_goalkeeper": -0.0,
+    "prev_league_IT1": -0.0001,
+    "prev_league_FR1": -0.0001,
+    "position_defender": -0.0001,
+    "promoted_club": -0.0001,
+    "prev_league_ES1": -0.0002,
+    "value_1y_ago_age_days": -0.0002,
+    "position_midfield": -0.0002,
+    "prev_league_L1": -0.0002,
+    "value_3y_ago_age_days": -0.0005,
+    "prev_goals": -0.0006,
+    "ucl_stage_reached": -0.0006
+  }
+}

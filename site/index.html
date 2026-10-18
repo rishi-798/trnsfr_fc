@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>transfer fc</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='5' fill='none' stroke='%23888'/></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="bar">
+    <button class="icon" id="menu-toggle" aria-label="filters" aria-expanded="false">+</button>
+    <nav class="seasons" id="seasons" aria-label="season"></nav>
+    <div class="right">
+      <span class="count" id="count"></span>
+      <button class="icon" id="theme-toggle" aria-label="toggle dark mode">◐</button>
+    </div>
+  </header>
+
+  <div class="filters" id="filters" hidden>
+    <div class="group" id="positions" aria-label="position">
+      <button data-group="all" class="on">all</button>
+      <button data-group="fwd">forwards</button>
+      <button data-group="mid">midfielders</button>
+      <button data-group="def">defenders</button>
+      <button data-group="gk">goalkeepers</button>
+    </div>
+    <div class="group" id="sorts" aria-label="sort">
+      <span class="label">sort</span>
+      <button data-sort="value" class="on">value</button>
+      <button data-sort="score">score</button>
+    </div>
+  </div>
+
+  <main class="grid" id="grid"></main>
+
+  <div class="scrim" id="scrim" hidden></div>
+  <aside class="panel" id="panel" aria-hidden="true">
+    <button class="icon close" id="panel-close" aria-label="close">×</button>
+    <div id="panel-body"></div>
+  </aside>
+
+  <script src="app.js"></script>
+</body>
+</html>
