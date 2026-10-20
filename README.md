@@ -54,7 +54,7 @@ python scripts/export_site_data.py
 | Download | Six compressed CSV tables in `data/raw/`: players, valuations, appearances, games, clubs, and competitions |
 | Build training table | `data/processed/player_seasons.csv` |
 | Train and evaluate | `data/processed/predictions.csv`, `explanations.csv`, and `model_metrics.json` |
-| Export site data | `site/data/players.json` |
+| Export site data | `site/data/players.json` | 
 
 The downloader needs internet access and skips files that already exist. To refresh a table or recover an interrupted download, move or remove the corresponding raw file before rerunning it. Raw data is excluded from Git.
 
