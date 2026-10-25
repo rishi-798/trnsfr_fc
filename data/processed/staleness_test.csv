@@ -1,0 +1,25 @@
+threshold,season,test_set,train_rows,test_rows,male,mae_m
+90 days,2023,labels <=90 days,514,521,0.3119,5.6973
+90 days,2023,labels <=180 days,514,522,0.3167,5.6894
+90 days,2024,labels <=90 days,1035,524,0.281,4.9658
+90 days,2024,labels <=180 days,1035,524,0.281,4.9658
+90 days,2025,labels <=90 days,1559,506,0.2717,5.1879
+90 days,2025,labels <=180 days,1559,506,0.2717,5.1879
+180 days (current),2023,labels <=90 days,514,521,0.3119,5.6973
+180 days (current),2023,labels <=180 days,514,522,0.3167,5.6894
+180 days (current),2024,labels <=90 days,1036,524,0.28,4.9199
+180 days (current),2024,labels <=180 days,1036,524,0.28,4.9199
+180 days (current),2025,labels <=90 days,1560,506,0.2723,5.2016
+180 days (current),2025,labels <=180 days,1560,506,0.2723,5.2016
+365 days,2023,labels <=90 days,521,521,0.307,5.4949
+365 days,2023,labels <=180 days,521,522,0.3104,5.4856
+365 days,2024,labels <=90 days,1054,524,0.2791,4.8574
+365 days,2024,labels <=180 days,1054,524,0.2791,4.8574
+365 days,2025,labels <=90 days,1578,506,0.2745,5.1887
+365 days,2025,labels <=180 days,1578,506,0.2745,5.1887
+no limit,2023,labels <=90 days,522,521,0.3068,5.4886
+no limit,2023,labels <=180 days,522,522,0.3101,5.4794
+no limit,2024,labels <=90 days,1055,524,0.2791,4.8585
+no limit,2024,labels <=180 days,1055,524,0.2791,4.8585
+no limit,2025,labels <=90 days,1590,506,0.2756,5.1986
+no limit,2025,labels <=180 days,1590,506,0.2756,5.1986

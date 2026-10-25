@@ -181,6 +181,11 @@ button {
 .tile .club { color: var(--muted); font-size: 11px; }
 .tile .change { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .tile .change.up { color: var(--fg); }
+.tile .change.faint { opacity: 0.45; }
+.note.caution { color: var(--fg); opacity: 0.6; }
+.group button:disabled { color: var(--line); cursor: default; }
+.empty.loading { animation: pulse 1.4s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: 0.35; } }
 .tile:focus-visible { outline: 1px solid var(--dim); outline-offset: 6px; }
 
 @keyframes rise { from { opacity: 0; transform: translateY(6px); } }
@@ -244,11 +249,21 @@ button {
 .big.clickable { cursor: pointer; }
 .explain { margin: 18px 0 0; line-height: 1.7; animation: rise 0.35s both; }
 .explain[hidden] { display: none; }
+.explain p { margin: 0; }
+.explain .details { margin-top: 10px; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.explain .tag { color: var(--dim); margin-right: 4px; }
 .trend svg { width: 100%; height: 120px; overflow: visible; }
 .trend .line { fill: none; stroke: var(--fg); stroke-width: 1; }
 .trend .dot { fill: var(--bg); stroke: var(--fg); stroke-width: 1; }
 .trend .dot.small { fill: var(--fg); stroke: none; }
 .trend .season { fill: var(--fg); opacity: 0.05; }
+.trend .forecast { stroke: var(--fg); stroke-width: 1; stroke-dasharray: 3 3; opacity: 0.7; }
+.trend .forecast-dot { fill: var(--bg); stroke: var(--fg); stroke-dasharray: 1.5 1.5; }
+.trend .forecast-label { fill: var(--fg); }
+.trend .legend { display: flex; align-items: center; gap: 6px; margin-top: 6px; color: var(--muted); font-size: 10px; }
+.trend .legend .key { display: inline-block; width: 14px; height: 0; border-top: 1px solid var(--fg); margin-left: 8px; }
+.trend .legend .key:first-child { margin-left: 0; }
+.trend .legend .key.dashed { border-top-style: dashed; }
 .trend text { fill: var(--muted); font-size: 10px; font-family: inherit; paint-order: stroke; stroke: var(--bg); stroke-width: 3px; stroke-linejoin: round; }
 
 @media (max-width: 600px) {

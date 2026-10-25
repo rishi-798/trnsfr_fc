@@ -49,6 +49,8 @@ const shownValue = (p) => p.predicted ?? p.values[2];
 // forecast change from the season-start value (null without a prediction)
 const change = (p) => (p.predicted != null && p.values[2] ? p.predicted / p.values[2] - 1 : null);
 const FLAT = 0.03;  // changes smaller than this read as flat
+const FEW_MINUTES = 270;  // under three full games: the forecast leans on very little this season
+const lowConfidence = (p) => p.predicted != null && p.minutes < FEW_MINUTES;
 const trend = (c) => (c == null ? "" : c > FLAT ? "up" : c < -FLAT ? "down" : "flat");
 const arrow = (c) => (c > FLAT ? "↑" : c < -FLAT ? "↓" : "→");
 const euroChange = (p) => (change(p) == null ? null : p.predicted - p.values[2]);
@@ -78,7 +80,21 @@ function visiblePlayers() {
   return rows.sort((a, b) => key(b) - key(a));
 }
 
+// risers/fallers need forecasts; a season without any (22/23) greys them out
+function updateSorts() {
+  const hasForecasts = state.data.players.some((p) => p.season === state.season && p.predicted != null);
+  $("sorts").querySelectorAll('[data-sort="risers"], [data-sort="fallers"]').forEach((b) => {
+    b.disabled = !hasForecasts;
+    b.title = hasForecasts ? "" : "no forecasts for this season";
+  });
+  if (!hasForecasts && (state.sort === "risers" || state.sort === "fallers")) {
+    state.sort = "value";
+    $("sorts").querySelectorAll("button").forEach((x) => x.classList.toggle("on", x.dataset.sort === "value"));
+  }
+}
+
 function renderGrid() {
+  updateSorts();
   const rows = visiblePlayers();
   const gw = state.data.live && state.season === state.data.live.season ? ` · after gw ${state.data.live.gameweek}` : "";
   $("count").textContent = `${rows.length} ${rows.length === 1 ? "player" : "players"}${gw}`;
@@ -96,7 +112,8 @@ function renderGrid() {
       <span class="value ${p.predicted == null ? "actual" : ""}">${state.sort === "score" ? rankLabel(p) : money(shownValue(p))}</span>
       <span class="name">${p.name}</span>
       <span class="club">${p.club ?? ""}</span>
-      ${c != null && state.sort !== "score" ? `<span class="change ${trend(c)}">${changeLabel(p)}</span>` : ""}`;
+      ${c != null && state.sort !== "score" ? `<span class="change ${trend(c)}${lowConfidence(p) ? " faint" : ""}"
+        ${lowConfidence(p) ? `title="low confidence: few minutes"` : ""}>${changeLabel(p)}</span>` : ""}`;
     tile.addEventListener("click", () => openPanel(p));
     $("grid").appendChild(tile);
   });
@@ -135,23 +152,35 @@ function trendSvg(p) {
   const t0 = day(`${years[0]}-06-30`), t1 = day(`${years[3]}-06-30`);
   const snaps = p.values.map((v, i) => ({ v, t: day(`${years[i]}-06-30`), label: `jun ${String(years[i]).slice(2)}` }));
   const known = snaps.filter((d) => d.v != null);
-  if (known.length < 2) return `<div class="note">not enough history</div>`;
+  // forecast: dashed line from the season-start value to the predicted season-end value
+  const forecast = p.predicted != null && p.values[2] != null ? { v: p.predicted, t: snaps[3].t } : null;
+  if (known.length + (forecast ? 1 : 0) < 2) return `<div class="note">not enough history</div>`;
   const updates = (state.data.valuations?.[p.id] ?? [])
     .map(([date, v]) => ({ v, t: day(date), date }))
     .filter((d) => d.t > Math.max(t0, known[0].t) && d.t < t1);
   const all = [...known, ...updates].sort((a, b) => a.t - b.t);
-  const max = Math.max(...all.map((d) => d.v)), min = Math.min(...all.map((d) => d.v));
+  const scale = forecast ? [...all, forecast] : all;
+  const max = Math.max(...scale.map((d) => d.v)), min = Math.min(...scale.map((d) => d.v));
   const x = (t) => 30 + ((t - t0) / (t1 - t0)) * 318;
   const y = (v) => 90 - (max === min ? 40 : ((v - min) / (max - min)) * 70);
   const line = all.map((d) => `${x(d.t)},${y(d.v)}`).join(" ");
+  // with an actual season-end value at the same spot, the higher of the two labels goes
+  // above its dot and the lower one below, so they never overlap
+  const endSnap = snaps[3].v != null ? snaps[3] : null;
+  const forecastLabelY = !forecast ? 0 : !endSnap ? y(forecast.v) + 3.5
+    : forecast.v > endSnap.v ? y(forecast.v) - 8 : y(forecast.v) + 14;
   return `<svg viewBox="0 0 380 120" preserveAspectRatio="none">
     <rect class="season" x="${x(snaps[2].t)}" y="0" width="${x(snaps[3].t) - x(snaps[2].t)}" height="100"/>
     <polyline class="line" points="${line}"/>
     ${updates.map((d) => `<circle class="dot small" cx="${x(d.t)}" cy="${y(d.v)}" r="1.8"><title>${shortDate(d.date)} ${d.date.slice(0, 4)} · ${money(d.v)}</title></circle>`).join("")}
     ${known.map((d) => `<circle class="dot" cx="${x(d.t)}" cy="${y(d.v)}" r="3"/>
-      <text x="${x(d.t)}" y="${y(d.v) - 10}" text-anchor="middle">${money(d.v)}</text>`).join("")}
+      <text x="${x(d.t)}" y="${d === endSnap && forecast && forecast.v > d.v ? y(d.v) + 16 : y(d.v) - 10}" text-anchor="middle">${money(d.v)}</text>`).join("")}
+    ${forecast ? `<line class="forecast" x1="${x(snaps[2].t)}" y1="${y(p.values[2])}" x2="${x(forecast.t)}" y2="${y(forecast.v)}"/>
+      <circle class="dot forecast-dot" cx="${x(forecast.t)}" cy="${y(forecast.v)}" r="3"><title>forecast ${money(forecast.v)}</title></circle>
+      <text class="forecast-label" x="${x(forecast.t) - 7}" y="${forecastLabelY}" text-anchor="end">${money(forecast.v)}</text>` : ""}
     ${snaps.map((d) => `<text x="${x(d.t)}" y="116" text-anchor="middle">${d.label}</text>`).join("")}
-  </svg>`;
+  </svg>
+  ${forecast ? `<div class="legend"><span class="key solid"></span>transfermarkt <span class="key dashed"></span>forecast</div>` : ""}`;
 }
 
 // the season's own valuation updates, spelled out under the chart
@@ -224,11 +253,14 @@ function openPanel(p) {
     <section class="vs">
       <div><div class="label">predicted${p.explanation ? ` <button class="why" id="why" aria-expanded="false">why ↓</button>` : ""}</div>
         <div class="big ${p.predicted == null ? "pending" : ""}" ${p.predicted != null ? `data-value="${p.predicted}"` : ""}>${money(p.predicted)}</div>
-        <div class="note">${predictionNote(p)}</div></div>
+        <div class="note">${predictionNote(p)}</div>
+        ${lowConfidence(p) ? `<div class="note caution">low confidence: only ${p.minutes} minutes${liveSeason(p) ? " so far" : ""}</div>` : ""}</div>
       <div><div class="label">actual</div><div class="big" ${p.values[2] != null ? `data-value="${p.values[2]}"` : ""}>${money(p.values[2])}</div>
         <div class="note">${actualNote(p)}</div>${stale}</div>
     </section>
-    ${p.explanation ? `<p class="explain" id="explain" hidden>${p.explanation}</p>` : ""}
+    ${p.explanation ? `<div class="explain" id="explain" hidden>${p.why_ai
+      ? `<p>${p.why_ai}</p><p class="details"><span class="tag">details</span> ${p.explanation}</p>`
+      : `<p>${p.explanation}</p>`}</div>` : ""}
     <section>
       <div class="label">performance score</div>
       <div class="vs"><div class="big">${p.score ?? "—"}</div><div class="big">${p.score_rank ?? "—"}<span class="sub">/${p.group_size}</span></div></div>
@@ -255,6 +287,7 @@ function openPanel(p) {
   }
   $("panel-body").querySelectorAll(".vs .big[data-value]").forEach(countUp);
   state.current = p;
+  setHash(playerHash(p));
   updateSteps();
   showPanel();
 }
@@ -312,7 +345,9 @@ function openAbout() {
       <p><span class="muted">predicted</span> — the forecast for the end of the season (30 june).<br>
         <span class="muted">actual</span> — the value at the start of the season.<br>
         <span class="muted">↑ ↓</span> — the forecast change between the two. the glow is warm for risers, cool for fallers.<br>
-        <span class="muted">why</span> — the factors that pushed the forecast up or down, straight from the model.</p>
+        <span class="muted">why</span> — the factors that pushed the forecast up or down, straight from the model.
+        where there's a plain-english version, gemini wrote it from those factors only (and it's checked against them);
+        <span class="muted">details</span> underneath shows the exact factors.</p>
       ${live ? `<h3>this season</h3>
       <p>${seasonLabel(live.season)} updates after every gameweek (now after gameweek ${live.gameweek}).
         early on, the forecast mixes this season's pace with last season, so a hot or cold start doesn't dominate.
@@ -326,6 +361,7 @@ function openAbout() {
         not affiliated with either.</p>
     </section>`;
   state.current = null;
+  setHash("");
   updateSteps();
   showPanel();
 }
@@ -334,6 +370,49 @@ function closePanel() {
   $("panel").classList.remove("open");
   $("panel").setAttribute("aria-hidden", "true");
   $("scrim").hidden = true;
+  state.current = null;
+  setHash("");
+}
+
+// --- links to a player: #erling-haaland (current season) or #erling-haaland-25-26 --------
+const slug = (name) => fold(name).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+// every player's link, worked out once when the data loads (both directions)
+function buildLinks() {
+  const latest = state.data.seasons[state.data.seasons.length - 1];
+  const counts = new Map();
+  for (const p of state.data.players) {
+    const k = `${p.season}|${slug(p.name)}`;
+    counts.set(k, (counts.get(k) ?? 0) + 1);
+  }
+  state.links = new Map();
+  state.byLink = new Map();
+  for (const p of state.data.players) {
+    const base = slug(p.name);
+    // two players with the same name in one season: add the id to tell them apart
+    const name = counts.get(`${p.season}|${base}`) > 1 ? `${base}-${p.id}` : base;
+    const link = p.season === latest ? name : `${name}-${seasonLabel(p.season).replace("/", "-")}`;
+    state.links.set(p, link);
+    state.byLink.set(link, p);
+  }
+}
+const playerHash = (p) => state.links.get(p);
+function setHash(hash) {
+  const url = hash ? `#${hash}` : location.pathname + location.search;
+  if (location.hash !== (hash ? `#${hash}` : "")) history.replaceState(null, "", url);
+}
+function playerFromHash() {
+  const hash = decodeURIComponent(location.hash.slice(1));
+  if (!hash) return null;
+  return state.byLink.get(hash) ?? null;
+}
+function openFromHash() {
+  const p = playerFromHash();
+  if (!p) {  // unknown or empty link: don't leave another player's panel showing
+    if ($("panel").classList.contains("open") && state.current) closePanel();
+    return;
+  }
+  if (p.season !== state.season) { state.season = p.season; renderSeasons(); renderGrid(); }
+  openPanel(p);
 }
 
 // --- start -------------------------------------------------------------
@@ -382,10 +461,20 @@ async function main() {
   bindToggleGroup("positions", "group", "group");
   bindToggleGroup("sorts", "sort", "sort");
 
-  state.data = await (await fetch("data/players.json")).json();
+  try {
+    const response = await fetch("data/players.json");
+    if (!response.ok) throw new Error(response.status);
+    state.data = await response.json();
+  } catch (e) {
+    $("grid").innerHTML = `<p class="empty">couldn't load the data. try refreshing.</p>`;
+    return;
+  }
   state.season = state.data.seasons[state.data.seasons.length - 1];
+  buildLinks();
   renderSeasons();
   renderGrid();
+  openFromHash();
+  window.addEventListener("hashchange", openFromHash);
 }
 
 main();

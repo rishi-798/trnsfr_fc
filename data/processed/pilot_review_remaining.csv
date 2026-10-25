@@ -1,0 +1,39 @@
+category,name,season,club,dataset_apps,dataset_minutes,dataset_goals,dataset_assists,dataset_value_end,dataset_value_end_date,transfermarkt_value_end,transfermarkt_value_end_date,stats_match,review_status,review_notes,transfermarkt_url,player_id
+complete,Bukayo Saka,2022/23,Arsenal FC,38,3194,14,11,120000000.0,2023-06-20,,,,,,https://www.transfermarkt.co.uk/bukayo-saka/profil/spieler/433177,433177
+complete,Charalampos Kostoulas,2025/26,Brighton & Hove Albion,21,353,2,1,25000000.0,2026-06-03,,,,,,https://www.transfermarkt.co.uk/charalampos-kostoulas/profil/spieler/1060087,1060087
+complete,Chris Wood,2022/23,Newcastle United,25,816,3,0,8000000.0,2023-06-20,,,,,,https://www.transfermarkt.co.uk/chris-wood/profil/spieler/108725,108725
+complete,Christian Eriksen,2022/23,Manchester United,28,2063,1,8,22000000.0,2023-06-20,,,,,,https://www.transfermarkt.co.uk/christian-eriksen/profil/spieler/69633,69633
+complete,Darwin Núñez,2022/23,Liverpool FC,29,1698,9,3,65000000.0,2023-06-20,,,,,,https://www.transfermarkt.co.uk/darwin-nunez/profil/spieler/546543,546543
+complete,Eddie Nketiah,2022/23,Arsenal FC,30,1071,4,2,25000000.0,2023-06-20,,,,,,https://www.transfermarkt.co.uk/eddie-nketiah/profil/spieler/340324,340324
+complete,Han-Noah Massengo,2023/24,Burnley FC,3,14,0,0,4000000.0,2024-05-27,,,,,,https://www.transfermarkt.co.uk/han-noah-massengo/profil/spieler/536508,536508
+complete,Mats Wieffer,2024/25,Brighton & Hove Albion,25,1008,1,5,25000000.0,2025-05-30,,,,,,https://www.transfermarkt.co.uk/mats-wieffer/profil/spieler/415381,415381
+complete,Mohamed Salah,2022/23,Liverpool FC,38,3297,19,12,65000000.0,2023-06-20,,,,,,https://www.transfermarkt.co.uk/mohamed-salah/profil/spieler/148455,148455
+complete,Vini Souza,2023/24,Sheffield United,36,2672,1,0,12000000.0,2024-05-27,,,,,,https://www.transfermarkt.co.uk/vini-souza/profil/spieler/663581,663581
+limited_minutes,Conor Coventry,2022/23,West Ham United,1,1,0,0,1800000.0,2023-06-01,,,,,,https://www.transfermarkt.co.uk/conor-coventry/profil/spieler/419025,419025
+limited_minutes,Kieffer Moore,2023/24,AFC Bournemouth,8,100,1,0,2000000.0,2024-05-24,,,,,,https://www.transfermarkt.co.uk/kieffer-moore/profil/spieler/275590,275590
+limited_minutes,Omari Forson,2023/24,Manchester United,4,68,0,1,2000000.0,2024-05-27,,,,,,https://www.transfermarkt.co.uk/omari-forson/profil/spieler/670845,670845
+limited_minutes,Tyler Dibling,2025/26,Everton FC,14,350,0,0,17000000.0,2026-06-03,,,,,,https://www.transfermarkt.co.uk/tyler-dibling/profil/spieler/866655,866655
+mid_season_mover,Antoine Semenyo,2025/26,AFC Bournemouth,37,3205,17,4,80000000.0,2026-06-03,,,,,,https://www.transfermarkt.co.uk/antoine-semenyo/profil/spieler/583255,583255
+mid_season_mover,James Ward-Prowse,2024/25,West Ham United,24,1440,1,2,8000000.0,2025-05-30,,,,,,https://www.transfermarkt.co.uk/james-ward-prowse/profil/spieler/181579,181579
+mid_season_mover,Marc Guiu,2025/26,Chelsea FC,10,266,0,1,12000000.0,2026-06-03,,,,,,https://www.transfermarkt.co.uk/marc-guiu/profil/spieler/938158,938158
+mid_season_mover,Oscar Bobb,2025/26,Fulham FC,23,1037,0,1,28000000.0,2026-06-03,,,,,,https://www.transfermarkt.co.uk/oscar-bobb/profil/spieler/661207,661207
+missing_end_value,Shea Lacey,2025/26,Manchester United,3,40,0,0,,,,,,,,https://www.transfermarkt.co.uk/shea-lacey/profil/spieler/926309,926309
+missing_prev_stats,Amadou Diallo,2023/24,Newcastle United,1,1,0,0,400000.0,2023-12-19,,,,,,https://www.transfermarkt.co.uk/amadou-diallo/profil/spieler/533086,533086
+missing_prev_stats,Bradley Burrowes,2025/26,Aston Villa,1,16,0,0,2000000.0,2025-12-09,,,,,,https://www.transfermarkt.co.uk/bradley-burrowes/profil/spieler/1202361,1202361
+missing_prev_stats,Dan Ballard,2025/26,Sunderland AFC,29,2148,2,2,20000000.0,2026-06-03,,,,,,https://www.transfermarkt.co.uk/dan-ballard/profil/spieler/503686,503686
+missing_prev_stats,Daniel Iversen,2022/23,Leicester City,12,1080,0,0,5000000.0,2023-06-20,,,,,,https://www.transfermarkt.co.uk/daniel-iversen/profil/spieler/260841,260841
+missing_prev_stats,Gavin Bazunu,2022/23,Southampton FC,32,2880,0,0,15000000.0,2023-06-20,,,,,,https://www.transfermarkt.co.uk/gavin-bazunu/profil/spieler/585550,585550
+missing_prev_stats,Julio Enciso,2022/23,Brighton & Hove Albion,20,800,4,2,22000000.0,2023-06-20,,,,,,https://www.transfermarkt.co.uk/julio-enciso/profil/spieler/660867,660867
+missing_prev_stats,Mohamadou Kanté,2025/26,West Ham United,11,66,0,0,1000000.0,2026-06-03,,,,,,https://www.transfermarkt.co.uk/mohamadou-kante/profil/spieler/1081995,1081995
+missing_prev_stats,Oliver Norwood,2023/24,Sheffield United,27,1433,1,0,1000000.0,2024-05-27,,,,,,https://www.transfermarkt.co.uk/oliver-norwood/profil/spieler/73547,73547
+missing_prev_stats,Romaine Mundle,2025/26,Sunderland AFC,14,401,0,0,7000000.0,2026-06-03,,,,,,https://www.transfermarkt.co.uk/romaine-mundle/profil/spieler/696181,696181
+missing_prev_stats,Romelle Donovan,2025/26,Brentford FC,4,38,0,1,3500000.0,2026-06-03,,,,,,https://www.transfermarkt.co.uk/romelle-donovan/profil/spieler/1091562,1091562
+promoted_club,Dominic Calvert-Lewin,2025/26,Leeds United,35,2730,14,1,22000000.0,2026-06-03,,,,,,https://www.transfermarkt.co.uk/dominic-calvert-lewin/profil/spieler/306024,306024
+promoted_club,Felipe,2022/23,Nottingham Forest,16,1419,0,1,2000000.0,2023-06-20,,,,,,https://www.transfermarkt.co.uk/felipe/profil/spieler/156501,156501
+promoted_club,Ilia Gruev,2025/26,Leeds United,23,1324,0,3,12000000.0,2026-06-03,,,,,,https://www.transfermarkt.co.uk/ilia-gruev/profil/spieler/381753,381753
+promoted_club,Oliver Sonne,2025/26,Burnley FC,7,165,1,0,4000000.0,2026-05-20,,,,,,https://www.transfermarkt.co.uk/oliver-sonne/profil/spieler/541628,541628
+promoted_club,Philip Billing,2022/23,AFC Bournemouth,36,2787,7,1,20000000.0,2023-06-20,,,,,,https://www.transfermarkt.co.uk/philip-billing/profil/spieler/320411,320411
+promoted_club,Ricardo Pereira,2024/25,Leicester City,10,385,0,0,4500000.0,2025-05-30,,,,,,https://www.transfermarkt.co.uk/ricardo-pereira/profil/spieler/215876,215876
+promoted_club,Zack Nelson,2023/24,Luton Town,2,4,0,0,100000.0,2023-12-19,,,,,,https://www.transfermarkt.co.uk/zack-nelson/profil/spieler/965940,965940
+stale_end_value,Harry Howell,2025/26,Brighton & Hove Albion,3,93,0,0,300000.0,2025-12-17,,,,,,https://www.transfermarkt.co.uk/harry-howell/profil/spieler/1067168,1067168
+stale_end_value,Joe Knight,2025/26,Brighton & Hove Albion,1,1,0,0,100000.0,2025-12-09,,,,,,https://www.transfermarkt.co.uk/joe-knight/profil/spieler/978668,978668

@@ -21,6 +21,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+import write_explanations
+
 ROOT = Path(__file__).resolve().parent.parent
 RAW = ROOT / "data" / "raw"
 TABLE = ROOT / "data" / "processed" / "player_seasons.csv"
@@ -297,13 +299,16 @@ def main():
             "explanation": explain_text, "factors": factors,
         })
 
+    live = json.loads(LIVE_STATE.read_text()) if LIVE.exists() and LIVE_STATE.exists() else None
+    # Gemini rewrites (write_explanations.py), only where they still match the current facts
+    ai_count = write_explanations.attach(players, live)
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps({
         "seasons": sorted(df.season.unique().tolist()), "model": model_summary(), "players": players,
-        "live": json.loads(LIVE_STATE.read_text()) if LIVE.exists() and LIVE_STATE.exists() else None,
+        "live": live,
         "valuations": valuation_history(table),
     }, ensure_ascii=False))
-    print(f"wrote {len(players)} player-seasons to {OUT.relative_to(ROOT)}")
+    print(f"wrote {len(players)} player-seasons to {OUT.relative_to(ROOT)} ({ai_count} with gemini explanations)")
 
 
 if __name__ == "__main__":

@@ -45,6 +45,8 @@ python scripts/build_training_table.py
 python scripts/update_live.py
 python scripts/train_model.py
 python scripts/export_site_data.py
+python scripts/write_explanations.py   # optional: Gemini rewrites, needs GEMINI_API_KEY
+python scripts/export_site_data.py     # again, to include them
 ```
 
 `update_live.py` adds the current season from the Fantasy Premier League feed (see [Live 2026/27 season](#live-202627-season)); skip it to build the historical seasons only.
@@ -111,6 +113,14 @@ The Transfermarkt dataset's updates are paused, and it ends with 2025/26. Everyt
 
 A [GitHub Actions workflow](.github/workflows/refresh-live.yml) runs the check daily at 07:00 UTC. When there is a new final gameweek it rebuilds, retrains, re-exports, and commits the refreshed data to `main`; pull before working locally. Run it by hand from the repository's Actions tab, with an option to force a rebuild.
 
+## Gemini explanations
+
+[`scripts/write_explanations.py`](scripts/write_explanations.py) rewrites each "why" note into two plain sentences with Gemini (`gemini-3.8-flash`, falling back to `gemini-3.6-flash` when it's overloaded; if both are busy it waits and retries, then stops and keeps the template until the next run). Flash-Lite is deliberately not used: in testing it copied the template's jargon instead of rephrasing it. It runs ahead of time, never from the browser, calling the Gemini REST API directly. Gemini receives only the facts behind the note: the template sentence, the model's factor effects, and key statistics. Every rewrite is checked and rejected if it uses a number that isn't in the facts, mentions something the model doesn't know about (injuries, contracts, fees, rumours, managers, international football), doesn't state the forecast's direction, or isn't two sentences of at most 70 words, or leaves out the predicted value. Rejected players keep the template.
+
+Rewrites are saved in `data/processed/explanations_ai.csv` with a fingerprint of the facts, model, and prompt version. The exporter shows a rewrite only while it still matches, and reruns only send players whose facts changed. The current season goes first, so if a daily quota runs out, rerun later to continue. The site shows the rewrite with the template underneath as "details".
+
+Put `GEMINI_API_KEY=...` in a `.env` file in the repository root (ignored by Git). For the weekly refresh, add the same key as a repository secret named `GEMINI_API_KEY` (Settings → Secrets and variables → Actions); without it, new gameweeks keep the template text.
+
 ## Performance score
 
 The browsing score is a separate, hand-built measure. It uses position-specific weights on per-90 statistics:
@@ -153,8 +163,10 @@ scripts/
   make_pilot_sample.py          Generate a manual review sample
   train_model.py                Train, evaluate, and explain predictions
   update_live.py                Add the current season from the Fantasy Premier League feed
+  write_explanations.py         Rewrite "why" notes with Gemini, checked against the facts
   export_site_data.py           Export browser data and performance scores
   evaluate_groups.py            Compare model and baseline errors by season and group
+  test_staleness.py             Compare 90/180/365-day label staleness thresholds on fixed test rows
   serve_site.py                 Serve the site locally without stale browser caching
 site/
   index.html                   Static site entry point

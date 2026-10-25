@@ -58,6 +58,14 @@ jobs:
           python scripts/evaluate_groups.py
           python scripts/export_site_data.py
 
+      - name: Rewrite explanations with Gemini (skipped without the GEMINI_API_KEY secret)
+        if: steps.check.outputs.changed == 'true' || inputs.force
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          python scripts/write_explanations.py
+          python scripts/export_site_data.py
+
       - name: Commit refreshed data
         if: steps.check.outputs.changed == 'true' || inputs.force
         run: |
