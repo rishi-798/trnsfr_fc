@@ -1631,7 +1631,7 @@ player_id,name,season,club_id,club_name,age,position,apps,minutes,goals,assists,
 866655,Tyler Dibling,2024,180,Southampton FC,18.5,Attack,33,1874,2,1,0,0,0,20.0,0,False,,,,,no_valuation,,,no_valuation,,,no_valuation,,,no_valuation,25000000.0,31.0,True
 867688,Jack Hinshelwood,2024,1237,Brighton & Hove Albion,19.3,Midfield,26,1848,5,3,0,0,0,8.0,0,True,GB1,871.0,3.0,0.0,,16000000.0,34.0,,,,no_valuation,,,no_valuation,24000000.0,31.0,True
 867711,Will Alves,2024,1003,Leicester City,19.2,Midfield,1,1,0,0,0,0,0,18.0,0,False,,,,,no_valuation,,,no_valuation,,,no_valuation,,,no_valuation,,,False
-874538,Ryan Trevitt,2024,1148,Brentford FC,21.4,Midfield,1,3,0,0,0,0,0,10.0,0,True,,,,,no_stats_in_dataset,275000.0,34.0,,100000.0,239.0,,,,no_valuation,275000.0,12.0,True
+874538,Ryan Trevitt,2024,1148,Brentford FC,21.4,Midfield,1,3,0,0,0,0,0,10.0,0,True,GB1,0.0,0.0,0.0,,275000.0,34.0,,100000.0,239.0,,,,no_valuation,275000.0,12.0,True
 879768,Will Lankshear,2024,148,Tottenham Hotspur,19.3,Attack,3,10,0,0,0,0,0,17.0,0,True,,,,,no_valuation,,,no_valuation,,,no_valuation,,,no_valuation,,,False
 880245,Mateus Fernandes,2024,180,Southampton FC,20.1,Midfield,36,2922,2,4,25,0,0,20.0,0,False,PO1,2244.0,1.0,2.0,,8000000.0,24.0,,1500000.0,14.0,,,,no_valuation,15000000.0,31.0,True
 890290,Dean Huijsen,2024,989,AFC Bournemouth,19.3,Defender,32,2422,3,2,0,0,0,9.0,0,True,IT1,533.0,2.0,1.0,,10000000.0,25.0,,400000.0,11.0,,,,no_valuation,60000000.0,31.0,True
