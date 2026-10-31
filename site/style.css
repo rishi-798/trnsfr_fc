@@ -252,6 +252,19 @@ button {
 .explain p { margin: 0; }
 .explain .details { margin-top: 10px; color: var(--muted); font-size: 11px; line-height: 1.6; }
 .explain .tag { color: var(--dim); margin-right: 4px; }
+
+/* performance score breakdown */
+.calc p { margin: 0 0 10px; font-size: 12px; }
+.calc .muted { color: var(--muted); }
+.calc strong { font-weight: 500; }
+.calc .formula { color: var(--muted); font-size: 11px; }
+.calc-table {
+  display: grid; grid-template-columns: 1fr repeat(4, max-content); gap: 6px 16px;
+  margin: 4px 0 14px; font-size: 12px; font-variant-numeric: tabular-nums;
+}
+.calc-table .h { color: var(--muted); font-size: 10px; }
+.calc-table .num { text-align: right; }
+.calc-table .sum { border-top: 1px solid var(--line); padding-top: 6px; }
 .trend svg { width: 100%; height: 120px; overflow: visible; }
 .trend .line { fill: none; stroke: var(--fg); stroke-width: 1; }
 .trend .dot { fill: var(--bg); stroke: var(--fg); stroke-width: 1; }

@@ -214,6 +214,57 @@ function actualNote(p) {
   return last ? `season start · valued ${shortDate(last[0])} ${last[0].slice(2, 4)}` : "season start";
 }
 
+// the performance score worked out step by step with this player's numbers
+// (weights come from the exporter via players.json, so this always matches the real score)
+const STAT_NAMES = { goals: "goals", assists: "assists", clean_sheets: "clean sheets", yellows: "yellow cards", reds: "red cards" };
+// in-between steps use 3 decimals so the shown arithmetic adds up when checked by hand
+const signed = (n, digits = 3) => (Math.abs(n) < 5e-4 ? "0" : `${n < 0 ? "−" : "+"}${Math.abs(n).toFixed(digits)}`);
+const plain3 = (n) => (Math.abs(n) < 5e-4 ? "0" : n.toFixed(3));
+
+function scoreParts(p) {
+  const f = state.data.score_formula;
+  const weights = { ...f.weights[p.group], ...f.cards };
+  const rows = Object.entries(weights).map(([stat, w]) => {
+    const per90 = (p[stat] / p.minutes) * 90;
+    return { stat, total: p[stat], per90, w, points: w * per90 };
+  });
+  const raw = rows.reduce((sum, r) => sum + r.points, 0);
+  const share = p.minutes / (p.minutes + f.reliability_minutes);
+  return { f, rows, raw, share, score: raw * share };
+}
+
+// "=" when the shown (rounded) numbers multiply to the shown score, "≈" in the few cases
+// where rounding the steps nudges the hand-check by 0.01
+const fmt2 = (n) => (Math.abs(n) < 0.005 ? "0.00" : n.toFixed(2));  // no "−0.00"
+const round3 = (n) => (Math.abs(n) < 5e-4 ? 0 : +n.toFixed(3));
+const shareText = (share) => String(+share.toPrecision(3));  // 0.444, or 0.00332 for a few minutes
+function productSymbol(shownRaw, share, score) {
+  return fmt2(shownRaw * +shareText(share)) === fmt2(score) ? "=" : "≈";
+}
+
+function scoreBreakdown(p) {
+  // ends on the stored score (rounded once, in the exporter) so it always matches the big number
+  const { f, rows, share } = scoreParts(p);
+  // the total shown is the sum of the rows as shown, so the table always adds up by hand
+  const raw = rows.reduce((sum, r) => sum + round3(r.points), 0);
+  const soFar = liveSeason(p) ? " so far" : "";
+  const formula = rows.map((r) => `${r.w < 0 ? "−" : "+"} ${Math.abs(r.w)}×${STAT_NAMES[r.stat]}`).join(" ").replace(/^\+ /, "");
+  return `
+    <p>${GROUP_NAMES[p.group]} score each stat per 90 minutes, then scale by playing time so a few good games can't top the table.
+      premier league only${soFar}.</p>
+    <p class="formula">score = (${formula}) per 90 × minutes ÷ (minutes + ${f.reliability_minutes})</p>
+    <div class="calc-table">
+      <span class="h">stat</span><span class="h num">total</span><span class="h num">per 90</span><span class="h num">× pts</span><span class="h num">=</span>
+      ${rows.map((r) => `<span>${STAT_NAMES[r.stat]}</span><span class="num">${r.total}</span><span class="num">${plain3(r.per90)}</span>
+        <span class="num">${r.w > 0 ? "+" : "−"}${Math.abs(r.w)}</span><span class="num">${signed(r.points)}</span>`).join("")}
+      <span class="sum">per-90 total</span><span class="sum"></span><span class="sum"></span><span class="sum"></span><span class="num sum">${signed(raw)}</span>
+    </div>
+    <p>playing time: ${p.minutes} ÷ (${p.minutes} + ${f.reliability_minutes}) = <strong>${shareText(share)}</strong>
+      <span class="muted">— the more minutes, the closer to 1</span></p>
+    <p>score: ${signed(raw)} × ${shareText(share)} ${productSymbol(raw, share, p.score)} <strong>${fmt2(p.score)}</strong></p>
+    ${f.weights[p.group].clean_sheets ? `<p class="muted">clean sheet = played ${f.clean_sheet_min_minutes}+ minutes and the team conceded none.</p>` : ""}`;
+}
+
 function factorsHtml(p) {
   const m = state.data.model;
   if (!m) return `<div class="note">run train_model.py</div>`;
@@ -262,15 +313,25 @@ function openPanel(p) {
       ? `<p>${p.why_ai}</p><p class="details"><span class="tag">details</span> ${p.explanation}</p>`
       : `<p>${p.explanation}</p>`}</div>` : ""}
     <section>
-      <div class="label">performance score</div>
+      <div class="label">performance score${p.score != null && state.data.score_formula ? ` <button class="why" id="how" aria-expanded="false">how ↓</button>` : ""}</div>
       <div class="vs"><div class="big">${p.score ?? "—"}</div><div class="big">${p.score_rank ?? "—"}<span class="sub">/${p.group_size}</span></div></div>
       <div class="note">rank among ${p.group_size} ${GROUP_NAMES[p.group]} in ${seasonLabel(p.season)}</div>
+      ${p.score != null && state.data.score_formula ? `<div class="explain calc" id="calc" hidden>${scoreBreakdown(p)}</div>` : ""}
     </section>
     <section class="trend"><div class="label">value trend</div>${trendSvg(p)}${seasonUpdates(p)}</section>
     <section><div class="label">season</div>
       <div class="stats">${stats.map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join("")}</div>
     </section>
     <section><div class="label">factors</div>${factorsHtml(p)}</section>`;
+  const how = $("how");
+  if (how) {
+    how.addEventListener("click", () => {
+      const open = $("calc").hidden;
+      $("calc").hidden = !open;
+      how.setAttribute("aria-expanded", String(open));
+      how.textContent = open ? "how ↑" : "how ↓";
+    });
+  }
   const why = $("why");
   if (why) {
     // the predicted value (and its "why" button) toggles the explanation

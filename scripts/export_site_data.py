@@ -35,6 +35,15 @@ OUT = ROOT / "site" / "data" / "players.json"
 
 LEAGUE = "GB1"
 RELIABILITY_MINUTES = 900
+# points per 90 minutes for each stat, by position group (cards count against every position).
+# The site reads these from players.json to show the calculation, so this is the only copy.
+SCORE_WEIGHTS = {
+    "fwd": {"goals": 5, "assists": 4},
+    "mid": {"goals": 3, "assists": 4},
+    "def": {"clean_sheets": 3, "goals": 3, "assists": 3},
+    "gk": {"clean_sheets": 5},
+}
+CARD_PENALTIES = {"yellows": -2, "reds": -5}
 CLEAN_SHEET_MIN_MINUTES = 60
 
 INITIALS = {
@@ -66,12 +75,10 @@ def season_events(seasons):
 
 def performance_score(df):
     per90 = lambda col: df[col] / df.minutes * 90
-    g, a, cs, y, r = per90("goals"), per90("assists"), per90("clean_sheets"), per90("yellows"), per90("reds")
-    raw = pd.Series(np.select(
-        [df.group == "fwd", df.group == "mid", df.group == "def", df.group == "gk"],
-        [5 * g + 4 * a, 4 * a + 3 * g, 3 * cs + 3 * g + 3 * a, 5 * cs],
-        default=np.nan,
-    ), index=df.index) - 2 * y - 5 * r
+    raw = pd.Series(np.nan, index=df.index)
+    for group, weights in SCORE_WEIGHTS.items():
+        rows = df.group == group
+        raw[rows] = sum(w * per90(stat)[rows] for stat, w in {**weights, **CARD_PENALTIES}.items())
     return raw * df.minutes / (df.minutes + RELIABILITY_MINUTES)
 
 
@@ -305,6 +312,8 @@ def main():
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps({
         "seasons": sorted(df.season.unique().tolist()), "model": model_summary(), "players": players,
+        "score_formula": {"weights": SCORE_WEIGHTS, "cards": CARD_PENALTIES,
+                          "reliability_minutes": RELIABILITY_MINUTES, "clean_sheet_min_minutes": CLEAN_SHEET_MIN_MINUTES},
         "live": live,
         "valuations": valuation_history(table),
     }, ensure_ascii=False))
